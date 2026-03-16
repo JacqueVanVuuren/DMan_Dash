@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ISI Seal Power Test Station</title>
+<style>
+body { font-family: Arial; margin:40px; }
+input, select { padding:8px; margin:5px; width:200px; }
+button { padding:10px 20px; margin-top:10px; cursor:pointer; }
+table { border-collapse:collapse; margin-top:20px; width:100%; }
+td, th { border:1px solid #ccc; padding:10px; text-align:center; }
+#loginStatus { font-weight:bold; margin-top:10px; }
+.pass { color:green; font-weight:bold; font-size:18px; }
+.fail { color:red; font-weight:bold; font-size:18px; }
+.hidden { display:none; }
+#resultsTable { margin-top:20px; font-size:14px; }
+</style>
+</head>
+
+<body>
+<h2>ISI Seal Power Profile Test Station</h2>
+
+<!-- Login Section -->
+<div id="loginDiv">
+    <input id="password" type="password" placeholder="Password"><br>
+    <button id="loginBtn">Login</button>
+    <p id="loginStatus"></p>
+</div>
+
+<!-- Test Section -->
+<div id="testDiv" class="hidden">
+    <hr>
+    <h3>Test Input</h3>
+    <table>
+        <tr>
+            <th>Serial Number</th>
+            <th>Range Type</th>
+            <th>Sleep Consumption (µA)</th>
+            <th>BLE Peak Consumption (µA)</th>
+            <th>Average Consumption (µA)</th>
+        </tr>
+        <tr>
+            <td><input id="serial"></td>
+            <td>
+                <select id="rangeType">
+                    <option value="short">Short Range</option>
+                    <option value="long">Long Range</option>
+                </select>
+            </td>
+            <td><input id="sleep"></td>
+            <td><input id="peak"></td>
+            <td><input id="average"></td>
+        </tr>
+    </table>
+    <br>
+    <button id="submitBtn">Submit Test</button>
+
+    <h3>Latest Test Result</h3>
+    <p id="result"></p>
+
+    <h3>Sent Test History</h3>
+    <table id="resultsTable">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Tester</th>
+                <th>Serial</th>
+                <th>Range</th>
+                <th>Sleep (µA)</th>
+                <th>Peak (µA)</th>
+                <th>Average (µA)</th>
+                <th>Pass/Fail</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+const SERVER = "https://thingsboard.intarget.mobi"; // replace if different
+const USERNAME = "dman@ioti.mobi"; // fixed username
+let jwtToken = null;
+
+// LOGIN
+document.getElementById("loginBtn").addEventListener("click", async () => {
+    const password = document.getElementById("password").value;
+
+    document.getElementById("loginStatus").innerText = "Logging in...";
+
+    try {
+        const res = await fetch(SERVER + "/api/auth/login", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({username:USERNAME, password:password})
+        });
+        if(!res.ok){
+            document.getElementById("loginStatus").innerText = "❌ Login Failed";
+            return;
+        }
+        const data = await res.json();
+        jwtToken = data.token;
+
+        document.getElementById("loginStatus").innerText = "✅ Login Successful";
+        document.getElementById("loginDiv").classList.add("hidden");
+        document.getElementById("testDiv").classList.remove("hidden");
+
+    } catch(e){
+        document.getElementById("loginStatus").innerText = "❌ Connection Error";
+        console.error(e);
+    }
+});
+
+// SUBMIT TEST
+document.getElementById("submitBtn").addEventListener("click", async () => {
+    if(!jwtToken){ alert("Please login first"); return; }
+
+    const serial = document.getElementById("serial").value;
+    const rangeType = document.getElementById("rangeType").value;
+    const sleep = Number(document.getElementById("sleep").value);
+    const peak = Number(document.getElementById("peak").value);
+    const average = Number(document.getElementById("average").value);
+
+    // PASS logic based on range
+    let threshold = (rangeType === "short") ? 18 : 28;
+    const passFail = (average <= threshold) ? "PASS" : "FAIL";
+
+    // Show result
+    document.getElementById("result").innerHTML =
+        `<span class="${passFail=='PASS'?'pass':'fail'}">${passFail}</span>`;
+
+    try {
+        // CREATE DEVICE
+        const deviceRes = await fetch(SERVER + "/api/device", {
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+                "X-Authorization":"Bearer "+jwtToken
+            },
+            body: JSON.stringify({ name: serial, type: "ISI Seal" })
+        });
+        const device = await deviceRes.json();
+        const deviceId = device.id.id;
+
+        // GET DEVICE TOKEN
+        const credRes = await fetch(SERVER + "/api/device/"+deviceId+"/credentials", {
+            headers: {"X-Authorization":"Bearer "+jwtToken}
+        });
+        const cred = await credRes.json();
+        const token = cred.credentialsId;
+
+        // SEND TELEMETRY
+        await fetch(SERVER + "/api/v1/"+token+"/telemetry", {
+            method:"POST",
+            headers: { "Content-Type":"application/json" },
+            body: JSON.stringify({
+                tester: USERNAME,
+                serial_number: serial,
+                range_type: rangeType,
+                sleep_consumption: sleep,
+                ble_peak_consumption: peak,
+                average_consumption: average,
+                pass_fail: passFail,
+                test_time: Date.now()
+            })
+        });
+
+        alert("✅ Test Result Sent Successfully");
+
+        // Add to history table
+        const tbody = document.getElementById("resultsTable").querySelector("tbody");
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${new Date().toLocaleTimeString()}</td>
+                        <td>${USERNAME}</td>
+                        <td>${serial}</td>
+                        <td>${rangeType}</td>
+                        <td>${sleep}</td>
+                        <td>${peak}</td>
+                        <td>${average}</td>
+                        <td class="${passFail=='PASS'?'pass':'fail'}">${passFail}</td>`;
+        tbody.appendChild(tr);
+
+    } catch(e){
+        alert("❌ Error sending data");
+        console.error(e);
+    }
+});
+</script>
+
+</body>
+</html>
