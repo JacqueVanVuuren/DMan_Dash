@@ -2,188 +2,2838 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>ISI Seal Power Test Station</title>
+<title>BLE Automated Power Test + ThingsBoard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+// AUTO START VOICE ON LOAD
+window.addEventListener("load", async () => {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    setTimeout(() => {
+      try {
+        startVoiceCommands();
+      } catch (e) {
+        console.error("Auto voice start failed:", e);
+      }
+    }, 1000);
+  } catch (e) {
+    console.error("Mic permission required:", e);
+  }
+});
+
+
+document.getElementById("voiceCmdBtn").onclick = startVoiceCommands;
+</script>
+
 <style>
-body { font-family: Arial; margin:40px; }
-input, select { padding:8px; margin:5px; width:200px; }
-button { padding:10px 20px; margin-top:10px; cursor:pointer; }
-table { border-collapse:collapse; margin-top:20px; width:100%; }
-td, th { border:1px solid #ccc; padding:10px; text-align:center; }
-#loginStatus { font-weight:bold; margin-top:10px; }
-.pass { color:green; font-weight:bold; font-size:18px; }
-.fail { color:red; font-weight:bold; font-size:18px; }
-.hidden { display:none; }
-#resultsTable { margin-top:20px; font-size:14px; }
+body { background:#0f172a; color:#e2e8f0; font-family:Arial; padding:20px; }
+.card { background:#1e293b; padding:15px; border-radius:10px; margin-bottom:10px; }
+button { padding:10px; border:none; border-radius:6px; background:#3b82f6; color:white; cursor:pointer; margin-right:5px; margin-top:5px; }
+button.secondary { background:#475569; }
+button.success { background:#16a34a; }
+button.warn { background:#d97706; }
+button.danger { background:#dc2626; }
+input, textarea, select { padding:6px; margin:5px; border-radius:6px; border:none; }
+textarea { width:100%; min-height:150px; font-family:monospace; }
+.pass { color:lime; font-weight:bold; }
+.fail { color:red; font-weight:bold; }
+label { display:inline-block; width:240px; vertical-align:top; }
+#manualButtons { margin-top:10px; }
+.statusBox { margin-top:10px; padding:8px; background:#0f172a; border-radius:6px; }
+.small { font-size:12px; color:#94a3b8; }
+.row { display:flex; flex-wrap:wrap; gap:16px; }
+.col { flex:1; min-width:320px; }
+.mono { font-family:monospace; word-break:break-all; }
+.hidden { display:none !important; }
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.75);
+}
+.modal-content {
+  background: #1e293b;
+  margin: 3% auto;
+  padding: 16px;
+  border-radius: 12px;
+  width: 92%;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+.modal-content input[type="text"],
+.modal-content input[type="password"],
+.modal-content input[type="number"] {
+  width: calc(100% - 24px);
+  font-size: 16px;
+  padding: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+#barcodeStatus, #configStatus { margin-top: 10px; color: #94a3b8; }
+.cfg-grid {
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+.cfg-item { background:#0f172a; padding:10px; border-radius:8px; }
+.cfg-item label { width:auto; display:block; margin-bottom:4px; color:#cbd5e1; }
+.cfg-item input[type="checkbox"] { transform:scale(1.2); margin-left:0; }
+.toolbar { display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; }
+.voiceToolbar {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:10px 0 0 0;
+}
+.voiceStatus {
+  margin-top:8px;
+  color:#94a3b8;
+  font-size:12px;
+}
+.statusRow {
+  display:flex;
+  gap:8px;
+  align-items:stretch;
+  flex-wrap:nowrap;
+}
+.metricsCard {
+  flex:1;
+  min-width:220px;
+
+  min-width:260px;
+  flex:0 0 260px;
+}
+.metricLine {
+  margin:8px 0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  white-space:nowrap;
+}
+.metricLine strong {
+  color:#cbd5e1;
+  flex:0 0 110px;
+}
+.metricValue {
+  display:inline-block;
+  min-width:90px;
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+}
+
+.resultText {
+  display: block;
+  max-width: 100%;
+
+  display: inline-block;
+  max-width: 220px;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+}
+
+.resultText {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.35 !important;
+  text-align: left !important;
+}
+.metricLine.resultLine {
+  display: block !important;
+  white-space: normal !important;
+}
+.metricLine.resultLine strong {
+  display: block !important;
+  margin-bottom: 4px;
+}
+.metricLine.resultLine .resultText {
+  margin-top: 2px;
+}
+.metricsCard {
+  min-width: 260px !important;
+  max-width: 260px !important;
+  overflow: hidden !important;
+}
+
+
+.phoneLinkToggleWrap { margin: 8px 0 12px 0; }
+#phoneLinkToggleBtn { display:none; }
+.phoneLinkCard { position:relative; }
+.phoneLinkCard.hiddenCard { display:none !important; }
+.phoneLinkRow { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+.phoneLinkQrBox {
+  width:132px; min-width:132px; height:132px;
+  background:#fff; border-radius:10px; padding:6px;
+  display:flex; align-items:center; justify-content:center;
+}
+.phoneLinkDetails { flex:1; min-width:220px; }
+.phoneLinkCode {
+  font-family:monospace; font-size:18px; font-weight:bold;
+  letter-spacing:1px; color:#93c5fd; margin:6px 0;
+}
+.phoneLinkHint { font-size:12px; color:#94a3b8; margin-top:6px; }
+.phoneLinkCompact { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+
 </style>
 </head>
-
 <body>
-<h2>ISI Seal Power Profile Test Station</h2>
 
-<!-- Login Section -->
-<div id="loginDiv">
-    <input id="password" type="password" placeholder="Password"><br>
-    <button id="loginBtn">Login</button>
-    <p id="loginStatus"></p>
+<h2>SEAL PROFILER DMAN@IOTI</h2>
+
+<div class="card phoneLinkCard" id="phoneLinkCard">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+    <h3 style="margin:0;">Phone Link</h3>
+    <div class="phoneLinkCompact">
+      <button id="refreshPhoneLinkBtn" class="secondary">Refresh QR</button>
+      <button id="hidePhoneLinkBtn" class="secondary">Hide</button>
+    </div>
+  </div>
+  <div class="phoneLinkRow">
+    <div id="phoneLinkQr" class="phoneLinkQrBox"></div>
+    <div class="phoneLinkDetails">
+      <div>Phone Link Status: <span id="phoneLinkStatus">Starting...</span></div>
+      <div>Daily Scan Code:</div>
+      <div id="phoneLinkCode" class="phoneLinkCode">---</div>
+      <div class="phoneLinkHint">Open the phone HTML, tap scan, and scan this QR once for the day. Internet is needed for the cloud signaling step.</div>
+    </div>
+  </div>
 </div>
 
-<!-- Test Section -->
-<div id="testDiv" class="hidden">
-    <hr>
-    <h3>Test Input</h3>
-    <table>
-        <tr>
-            <th>Serial Number</th>
-            <th>Range Type</th>
-            <th>Sleep Consumption (µA)</th>
-            <th>BLE Peak Consumption (µA)</th>
-            <th>Average Consumption (µA)</th>
-        </tr>
-        <tr>
-            <td><input id="serial"></td>
-            <td>
-                <select id="rangeType">
-                    <option value="short">Short Range</option>
-                    <option value="long">Long Range</option>
-                </select>
-            </td>
-            <td><input id="sleep"></td>
-            <td><input id="peak"></td>
-            <td><input id="average"></td>
-        </tr>
+
+<div class="card" id="loginCard">
+  <input id="password" type="password" placeholder="ThingsBoard Password">
+  <button id="loginBtn">Login</button>
+  <button id="openConfigBtn" class="secondary">Configuration</button>
+  <p id="loginStatus"></p>
+</div>
+
+<div id="pcApp">
+  <div class="card" id="testCard">
+    Device Serial: <input id="deviceSerial" oninput="this.value = this.value.toLowerCase()"><br><br>
+
+    <button id="connectPowerPortBtn">Connect Power COM</button>
+    <button id="connectIdPortBtn">Connect ID COM</button>
+    <button id="loadFirmwareBtn" class="secondary">Select Firmware</button>
+    <button id="programBtn" class="warn">Program Device</button>
+    <input id="firmwareFileInput" type="file" accept=".hex,.bin,.txt" class="hidden">
+    <button id="connect">Start Test</button>
+    <button id="stopEspBtn" class="secondary">Stop Test</button>
+
+<button id="voiceCmdBtn" class="success">Voice Always On</button>
+
+    <button id="openConfigBtn2" class="secondary">Configuration</button>
+    <button id="phoneLinkToggleBtn" class="secondary">Show Phone Link</button>
+
+    <div id="voiceStatus" class="voiceStatus">Voice commands: Idle</div>
+
+    <div class="statusRow">
+      <div class="statusBox" style="flex:1.2; min-width:280px;">
+        <div>Power Port: <span id="powerPortStatus">Not connected</span></div>
+        <div>ESP Programmer: <span id="programmerStatus">Idle</span></div>
+        <div>Program Detail: <span id="programmerDetail">-</span></div>
+        <div>ID Port: <span id="idPortStatus">Not connected</span></div>
+        <div>Last ID Seen: <span id="lastSeenId">-</span></div>
+        <div>Last RSSI Seen: <span id="lastSeenRssi">-</span></div>
+        <div>Last ID Time: <span id="lastSeenTime">-</span></div>
+        <div>Peak-Matched ID: <span id="peakMatchedId">-</span></div>
+        <div>Peak Match Time: <span id="peakMatchedTime">-</span></div>
+        <div>ID Window: <span id="idWindowStatus">Idle</span></div>
+        <div>Overall Cap In Use: <span id="overallCapStatus">-</span></div>
+        <div>Last Barcode Label: <span id="lastBarcodeLabel">-</span></div>
+        <div>Phone Link: <span id="phoneLinkInlineStatus">Not linked</span></div>
+        <div>NFC Status: <span id="nfcStatus">Idle</span></div>
+      </div>
+
+      <div class="card metricsCard" style="flex:0.8;">
+        <div class="metricLine"><strong>Max Burst:</strong> <span><span id="maxValue" class="metricValue">0</span> µA</span></div>
+        <div class="metricLine"><strong>Sleep Avg:</strong> <span><span id="sleepAvg" class="metricValue">0</span> µA</span></div>
+        <div class="metricLine"><strong>Overall Avg:</strong> <span><span id="overallAvg" class="metricValue">0</span> µA</span></div>
+        <div class="metricLine"><strong>Burst Count:</strong> <span id="burstCount" class="metricValue">0</span></div>
+        <div class="metricLine resultLine"><strong>Result:</strong><span id="testResult" class="resultText">WAITING</span></div>
+      </div>
+
+      <div class="statusBox" style="flex:1.5; min-width:320px;">
+        <div>Programming Log</div>
+        <textarea id="programLog" readonly style="min-height:160px; resize:vertical; width:100%; background:#000; color:#fff; border:1px solid #334155; font-family:monospace;"></textarea>
+      </div>
+
+      <div class="statusBox" style="flex:1.5; min-width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div>BLE Event Log</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="downloadBleLogBtn" class="secondary" style="padding:6px 10px; margin:0;">Download Log</button>
+            <button id="clearBleLogBtn" class="secondary" style="padding:6px 10px; margin:0;">Clear Log</button>
+          </div>
+        </div>
+        <textarea id="bleEventLog" readonly style="min-height:160px; resize:vertical; width:100%; background:#000; color:#7CFC00; border:1px solid #334155; font-family:monospace;"></textarea>
+      </div>
+    </div>
+
+    <div id="manualButtons" style="display:none;">
+      <button id="retryBtn">Retry</button>
+      <button id="sendFailBtn" class="warn" disabled>Send Failure</button>
+    </div>
+
+    <p class="small">ID format expected on second COM port: RSSI:-60 ID:11479E73A94E6B58</p>
+
+    <canvas id="adcChart" height="30"></canvas>
+  </div>
+
+  <div class="card">
+    <h3>Test History</h3>
+    <table border="1" width="100%">
+      <tr>
+        <th>Time</th>
+        <th>Serial</th>
+        <th>Barcode Label</th>
+        <th>Sleep Avg</th>
+        <th>Burst</th>
+        <th>Overall Avg</th>
+        <th>Result</th>
+      </tr>
+      <tbody id="history"></tbody>
     </table>
+  </div>
+</div>
+
+<div id="barcodeModal" class="modal">
+  <div class="modal-content">
+    <h3>Scan Barcode</h3>
+    <p>Scan the board barcode now. You can use the PC scanner, type it manually, or use the phone if linked.</p>
+    <input id="barcodeInput" type="text" placeholder="Scan barcode here">
     <br>
-    <button id="submitBtn">Submit Test</button>
+    <button id="barcodeSaveBtn">Save Barcode</button>
+    <button id="barcodeCancelBtn" class="secondary">Cancel</button>
+    <div id="barcodeStatus">Waiting for barcode scan...</div>
+  </div>
+</div>
 
-    <h3>Latest Test Result</h3>
-    <p id="result"></p>
+<div id="configPasswordModal" class="modal">
+  <div class="modal-content">
+    <h3>Configuration Login</h3>
+    <p>Enter the configuration password.</p>
+    <input id="configPasswordInput" type="password" placeholder="Password">
+    <button id="configPasswordOkBtn">Open Configuration</button>
+    <button id="configPasswordCancelBtn" class="secondary">Cancel</button>
+    <div id="configStatus"></div>
+  </div>
+</div>
 
-    <h3>Sent Test History</h3>
-    <table id="resultsTable">
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Tester</th>
-                <th>Serial</th>
-                <th>Range</th>
-                <th>Sleep (µA)</th>
-                <th>Peak (µA)</th>
-                <th>Average (µA)</th>
-                <th>Pass/Fail</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+<div id="configModal" class="modal">
+  <div class="modal-content">
+    <h3>Configuration</h3>
+
+    <div class="cfg-grid">
+      <div class="cfg-item">
+        <label for="cfgTestDurationMs">Test Duration (ms)</label>
+        <input id="cfgTestDurationMs" type="number" min="1000">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgIdCapturePastMs">ID Capture Past (ms)</label>
+        <input id="cfgIdCapturePastMs" type="number" min="0">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgIdCaptureFutureMs">ID Capture Future (ms)</label>
+        <input id="cfgIdCaptureFutureMs" type="number" min="0">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgIdEventHistoryMs">ID Hold / History Time (ms)</label>
+        <input id="cfgIdEventHistoryMs" type="number" min="100">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgSleepThresholdUa">Sleep Threshold (µA)</label>
+        <input id="cfgSleepThresholdUa" type="number" min="0" step="0.1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgBurstThresholdUa">Burst Threshold (µA)</label>
+        <input id="cfgBurstThresholdUa" type="number" min="0" step="0.1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgMinCurrentUa">Minimum Current Clamp (µA)</label>
+        <input id="cfgMinCurrentUa" type="number" min="0.001" step="0.1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgSleepWindowSize">Sleep Window Size</label>
+        <input id="cfgSleepWindowSize" type="number" min="1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgEnableRssiFilter">Enable RSSI Filter</label>
+        <input id="cfgEnableRssiFilter" type="checkbox">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgRssiMinDbm">RSSI Minimum (dBm)</label>
+        <input id="cfgRssiMinDbm" type="number" step="1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgChartMaxPoints">Chart Max Points</label>
+        <input id="cfgChartMaxPoints" type="number" min="10">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgChartYMinUa">Chart Y Min (µA)</label>
+        <input id="cfgChartYMinUa" type="number" min="0.001" step="0.1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgChartYMaxUa">Chart Y Max (µA)</label>
+        <input id="cfgChartYMaxUa" type="number" min="1" step="1">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgAiVoiceEnabled">Enable AI Voice (ElevenLabs)</label>
+        <input id="cfgAiVoiceEnabled" type="checkbox">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgElevenLabsApiKey">ElevenLabs API Key</label>
+        <input id="cfgElevenLabsApiKey" type="password" placeholder="xi-...">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgElevenLabsVoiceId">ElevenLabs Voice ID</label>
+        <input id="cfgElevenLabsVoiceId" type="text" placeholder="JBFqnCBsd6RMkjVDRZzb">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgElevenLabsModelId">ElevenLabs Model ID</label>
+        <input id="cfgElevenLabsModelId" type="text" placeholder="eleven_flash_v2_5">
+      </div>
+      <div class="cfg-item">
+        <div class="small">AI voice uses the ElevenLabs Text-to-Speech API. Your API key is stored in this browser's local storage in this HTML app.</div>
+      </div>
+      <div class="cfg-item">
+        <label for="cfgDeepgramVoiceEnabled">Enable Deepgram Voice Commands</label>
+        <input id="cfgDeepgramVoiceEnabled" type="checkbox">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgDeepgramApiKey">Deepgram API Key / Temporary Token</label>
+        <input id="cfgDeepgramApiKey" type="password" placeholder="Deepgram key or short-lived token">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgDeepgramModel">Deepgram Model</label>
+        <input id="cfgDeepgramModel" type="text" placeholder="nova-3">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgDeepgramLanguage">Deepgram Language</label>
+        <input id="cfgDeepgramLanguage" type="text" placeholder="en-US">
+      </div>
+      <div class="cfg-item">
+        <label for="cfgDeepgramEndpointingMs">Deepgram Endpointing (ms)</label>
+        <input id="cfgDeepgramEndpointingMs" type="number" min="0" step="1">
+      </div>
+      <div class="cfg-item">
+        <div class="small">For quick testing you can paste a Deepgram key directly here. For production, use a short-lived token from your backend instead of storing a long-lived key in the browser.</div>
+      </div>
+      <div class="cfg-item">
+        <label for="cfgStm32TargetBleName">STM32 Target BLE Name</label>
+        <input id="cfgStm32TargetBleName" type="text" placeholder="ISI Seal">
+        <div class="small">This name is sent to the STM32 scanner when you press Save Settings.</div>
+      </div>
+      <div class="cfg-item">
+        <label for="cfgOverallCapRules">Overall Cap Rules by Burst Count</label>
+        <textarea id="cfgOverallCapRules" placeholder="Example:
+45=150
+40=140
+35=130
+30=120
+25=110
+20=100
+0=90"></textarea>
+        <div class="small">Format: burstMin=cap, one per line. Highest burstMin should be at the top.</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button id="configSaveBtn" class="success">Save Settings</button>
+      <button id="configResetBtn" class="warn">Reset Defaults</button>
+      <button id="configCloseBtn" class="secondary">Close</button>
+    </div>
+    <div id="configSaveStatus" class="small"></div>
+  </div>
 </div>
 
 <script>
-const SERVER = "https://thingsboard.intarget.mobi"; // replace if different
-const USERNAME = "dman@ioti.mobi"; // fixed username
+// -------- ThingsBoard --------
+const SERVER = "https://thingsboard.intarget.mobi";
+const USERNAME = "dman@ioti.mobi";
+const CONFIG_PASSWORD = "12345";
+const SETTINGS_KEY = "blePowerTesterSettingsV3";
+
+// -------- Serial settings --------
+const POWER_PORT_BAUD = 460800;
+const ID_PORT_BAUD = 115200;
+
+const DEFAULT_SETTINGS = {
+  TEST_DURATION_MS: 15000,
+  ID_CAPTURE_PAST_MS: 400,
+  ID_CAPTURE_FUTURE_MS: 400,
+  ID_EVENT_HISTORY_MS: 10000,
+  SLEEP_THRESHOLD_UA: 200,
+  BURST_THRESHOLD_UA: 500,
+  MIN_CURRENT_UA: 0.1,
+  ENABLE_RSSI_FILTER: false,
+  RSSI_MIN_DBM: -70,
+  CHART_MAX_POINTS: 2000,
+  CHART_Y_MIN_UA: 1,
+  CHART_Y_MAX_UA: 25000,
+  SLEEP_WINDOW_SIZE: 20,
+  AI_VOICE_ENABLED: false,
+  ELEVENLABS_API_KEY: "",
+  ELEVENLABS_VOICE_ID: "JBFqnCBsd6RMkjVDRZzb",
+  ELEVENLABS_MODEL_ID: "eleven_flash_v2_5",
+  DEEPGRAM_VOICE_ENABLED: false,
+  DEEPGRAM_API_KEY: "0ad97c65bf74d1fa8e34fb89d9e14efe0d2656ee",
+  DEEPGRAM_MODEL: "nova-3",
+  DEEPGRAM_LANGUAGE: "en-US",
+  DEEPGRAM_ENDPOINTING_MS: 300,
+  STM32_TARGET_BLE_NAME: "ISI Seal",
+  OVERALL_CAP_RULES: [
+    { burstMin: 45, cap: 150 },
+    { burstMin: 40, cap: 140 },
+    { burstMin: 35, cap: 130 },
+    { burstMin: 30, cap: 120 },
+    { burstMin: 25, cap: 110 },
+    { burstMin: 20, cap: 100 },
+    { burstMin: 0, cap: 90 }
+  ]
+};
+
+let settings = loadSettings();
+
 let jwtToken = null;
+let powerPort = null;
+let powerReader = null;
+let idPort = null;
+let idReader = null;
+let idReadLoopRunning = false;
+let idBuffer = "";
+let latestIdData = { id: "", rssi: "", timestamp: 0, raw: "" };
+let recentIdEvents = [];
+let lastTestData = null;
+let lastBarcodeLabel = "";
+let idCaptureWindowActive = false;
+let idCaptureWindowEnd = 0;
+let idWindowEvents = [];
+let activeTestCapturedId = "";
+let activeTestHadPeak = false;
+let activeOverallCap = 0;
+let espLineBuffer = "";
+let testStopRequested = false;
+let programmingLogLines = [];
+let bleEventLogLines = [];
+let selectedFirmwareFile = null;
+let selectedFirmwareName = "";
+let voiceRecognition = null;
+let voiceRecognitionRunning = false;
+let voiceRecognitionSupported = false;
+let voiceRecognitionShouldStayOn = false;
+let voiceRecognitionRestartTimer = null;
+let voiceRecognitionBlockedByPermission = false;
+let voiceRecognitionLastStartAt = 0;
+let voiceRecognitionRearmCount = 0;
+let isProgramming = false;
+let voiceOutputActive = false;
+let voiceOutputResumeTimer = null;
+let deepgramSocket = null;
+let deepgramMediaStream = null;
+let deepgramMediaRecorder = null;
+let deepgramKeepAliveTimer = null;
+let deepgramReconnectTimer = null;
+let deepgramReconnectAttempts = 0;
+let deepgramConnectInProgress = false;
+let deepgramSessionShouldStayOn = false;
+let deepgramSessionRunning = false;
+let deepgramTranscriptBuffer = "";
+let deepgramLastHeardAt = 0;
+let lastExecutedVoiceCommand = "";
+let lastExecutedVoiceCommandAt = 0;
 
-// LOGIN
-document.getElementById("loginBtn").addEventListener("click", async () => {
-    const password = document.getElementById("password").value;
+function setProgrammerStatus(text) {
+  document.getElementById("programmerStatus").innerText = text;
+}
 
-    document.getElementById("loginStatus").innerText = "Logging in...";
+function setProgrammerDetail(text) {
+  document.getElementById("programmerDetail").innerText = text || "-";
+}
 
+function clearProgrammingLog() {
+  programmingLogLines = [];
+  document.getElementById("programLog").value = "";
+  setProgrammerDetail("-");
+}
+
+function updateFirmwareLoadedStatus() {
+  if (selectedFirmwareName) {
+    appendProgrammingLog("Firmware ready: " + selectedFirmwareName);
+    setProgrammerDetail("Firmware ready: " + selectedFirmwareName);
+  }
+}
+
+async function chooseFirmwareFileOnly() {
+  const input = document.getElementById("firmwareFileInput");
+  input.value = "";
+
+  const file = await new Promise((resolve) => {
+    input.onchange = () => resolve(input.files && input.files[0] ? input.files[0] : null);
+    input.click();
+  });
+
+  if (!file) return null;
+
+  selectedFirmwareFile = file;
+  selectedFirmwareName = file.name || "";
+  updateFirmwareLoadedStatus();
+  return file;
+}
+
+function appendProgrammingLog(line) {
+  const clean = String(line || "").trim();
+  if (!clean) return;
+
+  // Suppress noisy non-actionable messages
+  if (clean === "Programming failed: Releasing Default reader" ||
+      clean.includes("Releasing Default reader") ||
+      clean === "Error: BreakError: Break received" ||
+      clean.includes("BreakError: Break received")) {
+    return;
+  }
+
+  const MAX_PROGRAM_LOG_STORE = 500;
+  const MAX_PROGRAM_LOG_DISPLAY = 50;
+
+  programmingLogLines.push(clean);
+  if (programmingLogLines.length > MAX_PROGRAM_LOG_STORE) {
+    programmingLogLines = programmingLogLines.slice(-MAX_PROGRAM_LOG_STORE);
+  }
+
+  const area = document.getElementById("programLog");
+  area.value = programmingLogLines.slice(-MAX_PROGRAM_LOG_DISPLAY).join("\n");
+  area.scrollTop = area.scrollHeight;
+  setProgrammerDetail(clean);
+}
+
+function clearBleEventLog() {
+  bleEventLogLines = [];
+  const area = document.getElementById("bleEventLog");
+  if (area) area.value = "";
+}
+
+function appendBleEventLog(line) {
+  const clean = String(line || "").trim();
+  if (!clean) return;
+
+  const MAX_BLE_LOG_STORE = 500;
+  const MAX_BLE_LOG_DISPLAY = 50;
+
+  bleEventLogLines.push(clean);
+  if (bleEventLogLines.length > MAX_BLE_LOG_STORE) {
+    bleEventLogLines = bleEventLogLines.slice(-MAX_BLE_LOG_STORE);
+  }
+  const area = document.getElementById("bleEventLog");
+  if (area) {
+    area.value = bleEventLogLines.slice(-MAX_BLE_LOG_DISPLAY).join("\n");
+    area.scrollTop = area.scrollHeight;
+  }
+}
+
+function downloadBleEventLog() {
+  const logLines = bleEventLogLines.length ? bleEventLogLines : ["BLE log is empty."];
+  const serialField = (document.getElementById("deviceSerial")?.value || "").trim().toLowerCase();
+  const safeSerial = serialField ? serialField.replace(/[^a-z0-9_-]+/gi, "_") : "no_serial";
+
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const filename = `ble_event_log_${safeSerial}_${stamp}.txt`;
+
+  const header = [
+    `Generated: ${now.toISOString()}`,
+    `Device Serial Field: ${serialField || "-"}`,
+    `Last Seen ID: ${document.getElementById("lastSeenId")?.innerText || "-"}`,
+    `Last Seen RSSI: ${document.getElementById("lastSeenRssi")?.innerText || "-"}`,
+    `Peak Matched ID: ${document.getElementById("peakMatchedId")?.innerText || "-"}`,
+    `ID Window Status: ${document.getElementById("idWindowStatus")?.innerText || "-"}`,
+    "",
+    "BLE EVENT LOG",
+    "============="
+  ].join("\n");
+
+  const blob = new Blob([header + "\n" + logLines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+let aiVoiceAudio = null;
+
+function disableVoiceCommandProcessing() {
+  voiceOutputActive = true;
+  setVoiceStatus("Speaking...");
+}
+
+function enableVoiceCommandProcessingAfterDelay(delayMs = 0) {
+  if (voiceOutputResumeTimer) {
+    clearTimeout(voiceOutputResumeTimer);
+  }
+
+  voiceOutputResumeTimer = setTimeout(() => {
+    voiceOutputResumeTimer = null;
+    voiceOutputActive = false;
+    if (deepgramSessionShouldStayOn && deepgramSessionRunning) {
+      setVoiceStatus("Listening");
+    }
+  }, Math.max(0, delayMs));
+}
+
+async function speakText(text) {
+  const msg = String(text || "").trim();
+  if (!msg) return;
+
+  disableVoiceCommandProcessing();
+
+  try {
+    if (settings.AI_VOICE_ENABLED && settings.ELEVENLABS_API_KEY && settings.ELEVENLABS_VOICE_ID) {
+      try {
+        await speakWithElevenLabs(msg);
+      } catch (e) {
+        console.error("ElevenLabs voice failed, falling back to browser voice:", e);
+        await speakWithBrowserVoice(msg);
+      }
+    } else {
+      await speakWithBrowserVoice(msg);
+    }
+  } finally {
+    enableVoiceCommandProcessingAfterDelay(0);
+  }
+}
+
+function speakWithBrowserVoice(text) {
+  return new Promise((resolve) => {
     try {
-        const res = await fetch(SERVER + "/api/auth/login", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({username:USERNAME, password:password})
-        });
-        if(!res.ok){
-            document.getElementById("loginStatus").innerText = "❌ Login Failed";
-            return;
+      if (!("speechSynthesis" in window)) {
+        resolve();
+        return;
+      }
+
+      const msg = String(text || "").trim();
+      if (!msg) {
+        resolve();
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(msg);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.error("Speech error:", e);
+      resolve();
+    }
+  });
+}
+
+async function speakWithElevenLabs(text) {
+  const apiKey = String(settings.ELEVENLABS_API_KEY || "").trim();
+  const voiceId = String(settings.ELEVENLABS_VOICE_ID || "").trim();
+  const modelId = String(settings.ELEVENLABS_MODEL_ID || "eleven_flash_v2_5").trim();
+
+  if (!apiKey || !voiceId) throw new Error("Missing ElevenLabs API key or voice ID.");
+
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "xi-api-key": apiKey
+    },
+    body: JSON.stringify({
+      text,
+      model_id: modelId
+    })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`ElevenLabs TTS failed (${res.status}): ${errText || res.statusText}`);
+  }
+
+  const blob = await res.blob();
+  const audioUrl = URL.createObjectURL(blob);
+
+  if (aiVoiceAudio) {
+    try {
+      aiVoiceAudio.pause();
+      if (aiVoiceAudio.dataset && aiVoiceAudio.dataset.url) {
+        URL.revokeObjectURL(aiVoiceAudio.dataset.url);
+      }
+    } catch (e) {}
+  }
+
+  aiVoiceAudio = new Audio(audioUrl);
+  aiVoiceAudio.dataset.url = audioUrl;
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = () => {
+      aiVoiceAudio.onended = null;
+      aiVoiceAudio.onerror = null;
+    };
+
+    aiVoiceAudio.onended = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    aiVoiceAudio.onerror = (e) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(e || new Error("ElevenLabs audio playback failed."));
+    };
+
+    aiVoiceAudio.play().catch((err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    });
+  });
+}
+
+function speakTestResult(result, reasonsText) {
+  const r = String(result || "").toUpperCase();
+  const reasons = String(reasonsText || "").trim();
+
+  if (r === "PASS") {
+    speakText("Pass. Please scan barcode.");
+    return;
+  }
+
+  if (r === "FAIL") {
+    const reasonList = reasons
+      ? reasons.split(";").map(x => String(x || "").trim()).filter(Boolean)
+      : [];
+
+    const spoken = [];
+    for (const reason of reasonList) {
+      spoken.push(reason);
+
+      if (/No B L E ID detected/i.test(reason)) {
+        spoken.push("No BLE ID was detected in the time window. Ensure the tag is placed close to the jig, and confirm that the RSSI threshold in the configuration page is not set too low.");
+      } else if (/Sleep Avg\s*>|Overall Avg\s*>/i.test(reason)) {
+        spoken.push("The device failed due to exceeding the current threshold. Ensure the threshold values are correctly configured on the configuration page.");
+      } else if (/Burst\s*</i.test(reason)) {
+        spoken.push("Please check the firmware, power path, and threshold configuration.");
+      }
+    }
+
+    if (spoken.length) {
+      speakText("Fail. " + spoken.join(" "));
+    } else {
+      speakText("Fail");
+    }
+  }
+}
+
+function safeReleaseReader(reader) {
+  if (!reader) return;
+  try { reader.releaseLock(); } catch (e) {}
+}
+
+async function sendCommandToPowerPort(cmd) {
+  if (!powerPort || !powerPort.writable) {
+    throw new Error("Power COM port is not connected.");
+  }
+  const writer = powerPort.writable.getWriter();
+  try {
+    await writer.write(new TextEncoder().encode(cmd + "\n"));
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+async function waitForEspResponse(matchers, timeoutMs = 30000, onLine = null) {
+  if (!powerPort || !powerPort.readable) {
+    throw new Error("Power COM port is not connected.");
+  }
+
+  let localReader = null;
+  const start = Date.now();
+
+  try {
+    localReader = powerPort.readable.getReader();
+    powerReader = localReader;
+
+    while (Date.now() - start < timeoutMs) {
+      const { value, done } = await localReader.read();
+      if (done) break;
+      if (!value) continue;
+
+      espLineBuffer += new TextDecoder().decode(value);
+      const lines = espLineBuffer.split(/\r?\n/);
+      espLineBuffer = lines.pop();
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+
+        if (onLine) onLine(line);
+
+        for (const matcher of matchers) {
+          if (matcher.when(line)) {
+            return { line, value: matcher.value ?? line };
+          }
         }
-        const data = await res.json();
-        jwtToken = data.token;
-
-        document.getElementById("loginStatus").innerText = "✅ Login Successful";
-        document.getElementById("loginDiv").classList.add("hidden");
-        document.getElementById("testDiv").classList.remove("hidden");
-
-    } catch(e){
-        document.getElementById("loginStatus").innerText = "❌ Connection Error";
-        console.error(e);
+      }
     }
-});
+  } finally {
+    if (localReader) {
+      safeReleaseReader(localReader);
+      if (powerReader === localReader) {
+        powerReader = null;
+      }
+    }
+  }
 
-// SUBMIT TEST
-document.getElementById("submitBtn").addEventListener("click", async () => {
-    if(!jwtToken){ alert("Please login first"); return; }
+  throw new Error("Timed out waiting for ESP response.");
+}
 
-    const serial = document.getElementById("serial").value;
-    const rangeType = document.getElementById("rangeType").value;
-    const sleep = Number(document.getElementById("sleep").value);
-    const peak = Number(document.getElementById("peak").value);
-    const average = Number(document.getElementById("average").value);
+async function readSelectedFirmwareFile(file) {
+  const fileName = (file?.name || "").toLowerCase();
+  const fileText = await file.text();
 
-    // PASS logic based on range
-    let threshold = (rangeType === "short") ? 18 : 28;
-    const passFail = (average <= threshold) ? "PASS" : "FAIL";
+  if (fileName.endsWith(".hex") || fileText.trim().startsWith(":")) {
+    return parseIntelHexRecords(fileText);
+  }
 
-    // Show result
-    document.getElementById("result").innerHTML =
-        `<span class="${passFail=='PASS'?'pass':'fail'}">${passFail}</span>`;
+  const arrayBuffer = await file.arrayBuffer();
+  return {
+    type: "bin",
+    bytes: new Uint8Array(arrayBuffer)
+  };
+}
 
+function parseIntelHexRecords(hexText) {
+  const lines = String(hexText || "")
+    .split(/\r?\n/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  if (!lines.length) throw new Error("Selected firmware file is empty.");
+
+  let eofSeen = false;
+  const records = [];
+  let dataRecordCount = 0;
+
+  for (const line of lines) {
+    if (!line.startsWith(":")) throw new Error("Invalid HEX file format.");
+
+    const record = line.slice(1);
+    if (record.length < 10 || (record.length % 2) !== 0) {
+      throw new Error("Invalid HEX record length.");
+    }
+
+    const raw = [];
+    for (let i = 0; i < record.length; i += 2) {
+      const value = parseInt(record.slice(i, i + 2), 16);
+      if (!Number.isFinite(value)) throw new Error("Invalid HEX data.");
+      raw.push(value);
+    }
+
+    const byteCount = raw[0];
+    const recordType = raw[3];
+    const checksum = raw[4 + byteCount];
+
+    if ((4 + byteCount) >= raw.length) {
+      throw new Error("Invalid HEX record length.");
+    }
+
+    let sum = 0;
+    for (let i = 0; i < 4 + byteCount; i++) sum = (sum + raw[i]) & 0xFF;
+    sum = ((~sum + 1) & 0xFF);
+    if (sum !== checksum) throw new Error("HEX checksum error.");
+
+    records.push(line.toUpperCase());
+    if (recordType === 0x00) dataRecordCount++;
+    if (recordType === 0x01) {
+      eofSeen = true;
+      break;
+    }
+  }
+
+  if (!eofSeen) throw new Error("HEX file missing EOF record.");
+  if (!records.length || dataRecordCount === 0) throw new Error("HEX file has no data records.");
+
+  return {
+    type: "hex",
+    records,
+    dataRecordCount
+  };
+}
+
+function bytesToHex(uint8) {
+  let out = "";
+  for (let i = 0; i < uint8.length; i++) {
+    out += uint8[i].toString(16).padStart(2, "0").toUpperCase();
+  }
+  return out;
+}
+
+function buildFastChunksFromIntelHex(records, chunkSize = 8192) {
+  let currentLinearBase = 0;
+  let currentSegmentBase = 0;
+  let linearBaseActive = false;
+
+  const blocks = [];
+  let blockStart = null;
+  let blockBytes = [];
+
+  function currentBase() {
+    return linearBaseActive ? currentLinearBase : currentSegmentBase;
+  }
+
+  function flushBlock() {
+    if (blockStart === null || blockBytes.length === 0) return;
+    blocks.push({
+      address: blockStart >>> 0,
+      bytes: new Uint8Array(blockBytes)
+    });
+    blockStart = null;
+    blockBytes = [];
+  }
+
+  function appendByte(address, value) {
+    if (blockStart === null) {
+      blockStart = address >>> 0;
+      blockBytes.push(value);
+      return;
+    }
+
+    const expectedNext = (blockStart + blockBytes.length) >>> 0;
+    const contiguous = address === expectedNext;
+    const fits = blockBytes.length < chunkSize;
+
+    if (!contiguous || !fits) {
+      flushBlock();
+      blockStart = address >>> 0;
+      blockBytes.push(value);
+      return;
+    }
+
+    blockBytes.push(value);
+  }
+
+  for (const line of records) {
+    const record = line.slice(1);
+    const byteCount = parseInt(record.slice(0, 2), 16);
+    const address = parseInt(record.slice(2, 6), 16);
+    const recordType = parseInt(record.slice(6, 8), 16);
+
+    if (recordType === 0x00) {
+      const absoluteBase = (currentBase() + address) >>> 0;
+      for (let i = 0; i < byteCount; i++) {
+        const value = parseInt(record.slice(8 + i * 2, 10 + i * 2), 16);
+        appendByte((absoluteBase + i) >>> 0, value);
+      }
+      continue;
+    }
+
+    flushBlock();
+
+    if (recordType === 0x01) {
+      break;
+    }
+
+    if (recordType === 0x02) {
+      const seg = parseInt(record.slice(8, 12), 16);
+      currentSegmentBase = (seg << 4) >>> 0;
+      linearBaseActive = false;
+      continue;
+    }
+
+    if (recordType === 0x04) {
+      const upper = parseInt(record.slice(8, 12), 16);
+      currentLinearBase = (upper << 16) >>> 0;
+      linearBaseActive = true;
+      continue;
+    }
+
+    // Ignore start address records (03 / 05) for chunk building.
+  }
+
+  flushBlock();
+  return blocks;
+}
+
+async function programFirmwareFromFile(file) {
+  if (!file) throw new Error("No firmware file selected.");
+
+  const firmware = await readSelectedFirmwareFile(file);
+
+  let chunks = [];
+  let sourceLabel = "";
+
+  if (firmware.type === "hex") {
+    chunks = buildFastChunksFromIntelHex(firmware.records, 8192);
+    if (!chunks.length) throw new Error("HEX conversion produced no chunks.");
+    sourceLabel = "HEX";
+    appendProgrammingLog(`HEX file loaded: ${file.name}`);
+    appendProgrammingLog(`HEX records: ${firmware.records.length}`);
+    appendProgrammingLog(`FAST chunks from HEX: ${chunks.length}`);
+  } else {
+    const firmwareBytes = firmware.bytes;
+    if (!firmwareBytes.length) throw new Error("Selected firmware file is empty.");
+
+    const chunkSize = 8192;
+    for (let offset = 0; offset < firmwareBytes.length; offset += chunkSize) {
+      chunks.push({
+        address: offset >>> 0,
+        bytes: firmwareBytes.slice(offset, Math.min(offset + chunkSize, firmwareBytes.length))
+      });
+    }
+
+    sourceLabel = "BIN";
+    appendProgrammingLog(`BIN file loaded: ${file.name}`);
+    appendProgrammingLog(`BIN bytes: ${firmwareBytes.length}`);
+    appendProgrammingLog(`FAST chunks: ${chunks.length}`);
+  }
+
+  setProgrammerStatus(`Preparing ${sourceLabel} ${file.name}...`);
+  document.getElementById("testResult").innerText = "PROGRAMMING";
+
+  await sendCommandToPowerPort(`FAST_BEGIN ${chunks.length} ${file.name}`);
+
+  const beginAck = await waitForEspResponse([
+    { when: line => /^FAST_READY$/i.test(line), value: "FAST_READY" },
+    { when: line => /^PROGRAM_FAIL/i.test(line), value: "PROGRAM_FAIL" },
+    { when: line => /^BUSY/i.test(line), value: "BUSY" }
+  ], 30000, appendProgrammingLog);
+
+  if (beginAck.value === "BUSY") {
+    setProgrammerStatus("Busy");
+    document.getElementById("testResult").innerText = "BUSY";
+    throw new Error("ESP is busy.");
+  }
+  if (beginAck.value !== "FAST_READY") {
+    setProgrammerStatus("Program FAIL");
+    document.getElementById("testResult").innerText = "FAIL [Programming failed]";
+    return false;
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const addressHex = chunk.address.toString(16).toUpperCase().padStart(8, "0");
+    const hexPayload = bytesToHex(chunk.bytes);
+
+    setProgrammerStatus(`Programming chunk ${i + 1}/${chunks.length}...`);
+    await sendCommandToPowerPort(`FAST_CHUNK ${i + 1} ${addressHex} ${hexPayload}`);
+
+    const ack = await waitForEspResponse([
+      { when: line => /^BATCH_OK\b/i.test(line), value: "BATCH_OK" },
+      { when: line => /^PROGRAM_FAIL/i.test(line), value: "PROGRAM_FAIL" },
+      { when: line => /^VERIFY_FAIL/i.test(line), value: "VERIFY_FAIL" },
+      { when: line => /^BUSY/i.test(line), value: "BUSY" }
+    ], 120000, appendProgrammingLog);
+
+    if (ack.value !== "BATCH_OK") {
+      throw new Error(`ESP rejected chunk ${i + 1}/${chunks.length}.`);
+    }
+  }
+
+  setProgrammerStatus("Finalising programming...");
+  await sendCommandToPowerPort("FAST_END");
+
+  let sawVerifyOk = false;
+  while (true) {
+    const result = await waitForEspResponse([
+      { when: line => /^VERIFY_OK$/i.test(line), value: "VERIFY_OK" },
+      { when: line => /^PROGRAM_OK$/i.test(line), value: "PROGRAM_OK" },
+      { when: line => /^VERIFY_FAIL/i.test(line), value: "VERIFY_FAIL" },
+      { when: line => /^PROGRAM_FAIL/i.test(line), value: "PROGRAM_FAIL" },
+      { when: line => /^BUSY/i.test(line), value: "BUSY" }
+    ], 180000, appendProgrammingLog);
+
+    if (result.value === "VERIFY_OK") {
+      sawVerifyOk = true;
+      setProgrammerStatus("Verify OK, waiting for reset...");
+      continue;
+    }
+    if (result.value === "PROGRAM_OK") {
+      setProgrammerStatus("Program OK");
+      document.getElementById("testResult").innerText = sawVerifyOk ? "PROGRAM OK - PRESS TEST" : "PROGRAM OK";
+      return true;
+    }
+    if (result.value === "BUSY") {
+      setProgrammerStatus("Busy");
+      document.getElementById("testResult").innerText = "BUSY";
+      throw new Error("ESP is busy.");
+    }
+
+    setProgrammerStatus("Program FAIL");
+    document.getElementById("testResult").innerText = "FAIL [Programming failed]";
+    return false;
+  }
+}
+
+async function chooseFirmwareAndProgram() {
+  if (!powerPort) await connectPowerPort();
+  if (!powerPort || !powerPort.readable || !powerPort.writable) {
+    alert("Connect the Power COM port first.");
+    return false;
+  }
+
+  let file = selectedFirmwareFile;
+
+  if (!file) {
+    file = await chooseFirmwareFileOnly();
+  }
+
+  if (!file) {
+    setProgrammerStatus("Idle");
+    appendProgrammingLog("No firmware selected.");
+    return false;
+  }
+
+  return programFirmwareFromFile(file);
+}
+
+async function runProgramSequence() {
+  isProgramming = true;
+
+  try {
+    return await chooseFirmwareAndProgram();
+  } finally {
+    isProgramming = false;
+
+    if (deepgramSessionShouldStayOn && deepgramSessionRunning) {
+      setVoiceStatus("Listening");
+    } else if (deepgramSessionShouldStayOn) {
+      setVoiceStatus("Reconnecting...");
+      scheduleDeepgramReconnect(500);
+    } else {
+      setVoiceStatus("Stopped");
+    }
+  }
+}
+
+async function stopEspTest() {
+  testStopRequested = true;
+  try {
+    if (powerPort && powerPort.writable) {
+      await sendCommandToPowerPort("STOP");
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  setProgrammerStatus("Stopped");
+  appendProgrammingLog("TX: STOP");
+}
+
+function cloneDefaults() {
+  return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+}
+
+function sanitizeSettings(obj) {
+  const s = cloneDefaults();
+  if (!obj || typeof obj !== "object") return s;
+
+  s.TEST_DURATION_MS = toNum(obj.TEST_DURATION_MS, s.TEST_DURATION_MS, 1000);
+  s.ID_CAPTURE_PAST_MS = toNum(obj.ID_CAPTURE_PAST_MS, s.ID_CAPTURE_PAST_MS, 0);
+  s.ID_CAPTURE_FUTURE_MS = toNum(obj.ID_CAPTURE_FUTURE_MS, s.ID_CAPTURE_FUTURE_MS, 0);
+  s.ID_EVENT_HISTORY_MS = toNum(obj.ID_EVENT_HISTORY_MS, s.ID_EVENT_HISTORY_MS, 100);
+  s.SLEEP_THRESHOLD_UA = toNum(obj.SLEEP_THRESHOLD_UA, s.SLEEP_THRESHOLD_UA, 0);
+  s.BURST_THRESHOLD_UA = toNum(obj.BURST_THRESHOLD_UA, s.BURST_THRESHOLD_UA, 0);
+  s.MIN_CURRENT_UA = toNum(obj.MIN_CURRENT_UA, s.MIN_CURRENT_UA, 0.001);
+  s.ENABLE_RSSI_FILTER = !!obj.ENABLE_RSSI_FILTER;
+  s.RSSI_MIN_DBM = toNum(obj.RSSI_MIN_DBM, s.RSSI_MIN_DBM, -200);
+  s.CHART_MAX_POINTS = toNum(obj.CHART_MAX_POINTS, s.CHART_MAX_POINTS, 10);
+  s.CHART_Y_MIN_UA = toNum(obj.CHART_Y_MIN_UA, s.CHART_Y_MIN_UA, 0.001);
+  s.CHART_Y_MAX_UA = toNum(obj.CHART_Y_MAX_UA, s.CHART_Y_MAX_UA, 1);
+  s.SLEEP_WINDOW_SIZE = toNum(obj.SLEEP_WINDOW_SIZE, s.SLEEP_WINDOW_SIZE, 1);
+  s.AI_VOICE_ENABLED = !!obj.AI_VOICE_ENABLED;
+  s.ELEVENLABS_API_KEY = typeof obj.ELEVENLABS_API_KEY === "string" ? obj.ELEVENLABS_API_KEY : "";
+  s.ELEVENLABS_VOICE_ID = typeof obj.ELEVENLABS_VOICE_ID === "string" && obj.ELEVENLABS_VOICE_ID.trim()
+    ? obj.ELEVENLABS_VOICE_ID.trim()
+    : s.ELEVENLABS_VOICE_ID;
+  s.ELEVENLABS_MODEL_ID = typeof obj.ELEVENLABS_MODEL_ID === "string" && obj.ELEVENLABS_MODEL_ID.trim()
+    ? obj.ELEVENLABS_MODEL_ID.trim()
+    : s.ELEVENLABS_MODEL_ID;
+  s.DEEPGRAM_VOICE_ENABLED = !!obj.DEEPGRAM_VOICE_ENABLED;
+  s.DEEPGRAM_API_KEY = typeof obj.DEEPGRAM_API_KEY === "string" ? obj.DEEPGRAM_API_KEY : "";
+  s.DEEPGRAM_MODEL = typeof obj.DEEPGRAM_MODEL === "string" && obj.DEEPGRAM_MODEL.trim()
+    ? obj.DEEPGRAM_MODEL.trim()
+    : s.DEEPGRAM_MODEL;
+  s.DEEPGRAM_LANGUAGE = typeof obj.DEEPGRAM_LANGUAGE === "string" && obj.DEEPGRAM_LANGUAGE.trim()
+    ? obj.DEEPGRAM_LANGUAGE.trim()
+    : s.DEEPGRAM_LANGUAGE;
+  s.DEEPGRAM_ENDPOINTING_MS = toNum(obj.DEEPGRAM_ENDPOINTING_MS, s.DEEPGRAM_ENDPOINTING_MS, 0);
+  s.STM32_TARGET_BLE_NAME = typeof obj.STM32_TARGET_BLE_NAME === "string" && obj.STM32_TARGET_BLE_NAME.trim()
+    ? obj.STM32_TARGET_BLE_NAME.trim()
+    : s.STM32_TARGET_BLE_NAME;
+
+  if (Array.isArray(obj.OVERALL_CAP_RULES)) {
+    const parsed = obj.OVERALL_CAP_RULES
+      .map(x => ({ burstMin: Number(x.burstMin), cap: Number(x.cap) }))
+      .filter(x => Number.isFinite(x.burstMin) && Number.isFinite(x.cap))
+      .sort((a, b) => b.burstMin - a.burstMin);
+    if (parsed.length) s.OVERALL_CAP_RULES = parsed;
+  }
+
+  if (s.CHART_Y_MAX_UA <= s.CHART_Y_MIN_UA) {
+    s.CHART_Y_MAX_UA = Math.max(s.CHART_Y_MIN_UA + 1, DEFAULT_SETTINGS.CHART_Y_MAX_UA);
+  }
+
+  return s;
+}
+
+function toNum(value, fallback, minVal) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(n, minVal);
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return cloneDefaults();
+    return sanitizeSettings(JSON.parse(raw));
+  } catch (e) {
+    console.error("Load settings failed:", e);
+    return cloneDefaults();
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function rulesToText(rules) {
+  return rules.map(r => `${r.burstMin}=${r.cap}`).join("\n");
+}
+
+function textToRules(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+
+  for (const lineRaw of lines) {
+    const line = lineRaw.trim();
+    if (!line) continue;
+    const match = line.match(/^(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)$/);
+    if (!match) {
+      throw new Error(`Invalid cap rule line: ${line}`);
+    }
+    out.push({ burstMin: Number(match[1]), cap: Number(match[2]) });
+  }
+
+  if (!out.length) throw new Error("At least one overall cap rule is required.");
+  out.sort((a, b) => b.burstMin - a.burstMin);
+  return out;
+}
+
+function applySettingsToUi() {
+  document.getElementById("cfgTestDurationMs").value = settings.TEST_DURATION_MS;
+  document.getElementById("cfgIdCapturePastMs").value = settings.ID_CAPTURE_PAST_MS;
+  document.getElementById("cfgIdCaptureFutureMs").value = settings.ID_CAPTURE_FUTURE_MS;
+  document.getElementById("cfgIdEventHistoryMs").value = settings.ID_EVENT_HISTORY_MS;
+  document.getElementById("cfgSleepThresholdUa").value = settings.SLEEP_THRESHOLD_UA;
+  document.getElementById("cfgBurstThresholdUa").value = settings.BURST_THRESHOLD_UA;
+  document.getElementById("cfgMinCurrentUa").value = settings.MIN_CURRENT_UA;
+  document.getElementById("cfgSleepWindowSize").value = settings.SLEEP_WINDOW_SIZE;
+  document.getElementById("cfgEnableRssiFilter").checked = settings.ENABLE_RSSI_FILTER;
+  document.getElementById("cfgRssiMinDbm").value = settings.RSSI_MIN_DBM;
+  document.getElementById("cfgChartMaxPoints").value = settings.CHART_MAX_POINTS;
+  document.getElementById("cfgChartYMinUa").value = settings.CHART_Y_MIN_UA;
+  document.getElementById("cfgChartYMaxUa").value = settings.CHART_Y_MAX_UA;
+  document.getElementById("cfgAiVoiceEnabled").checked = settings.AI_VOICE_ENABLED;
+  document.getElementById("cfgElevenLabsApiKey").value = settings.ELEVENLABS_API_KEY;
+  document.getElementById("cfgElevenLabsVoiceId").value = settings.ELEVENLABS_VOICE_ID;
+  document.getElementById("cfgElevenLabsModelId").value = settings.ELEVENLABS_MODEL_ID;
+  document.getElementById("cfgDeepgramVoiceEnabled").checked = settings.DEEPGRAM_VOICE_ENABLED;
+  document.getElementById("cfgDeepgramApiKey").value = settings.DEEPGRAM_API_KEY;
+  document.getElementById("cfgDeepgramModel").value = settings.DEEPGRAM_MODEL;
+  document.getElementById("cfgDeepgramLanguage").value = settings.DEEPGRAM_LANGUAGE;
+  document.getElementById("cfgDeepgramEndpointingMs").value = settings.DEEPGRAM_ENDPOINTING_MS;
+  document.getElementById("cfgStm32TargetBleName").value = settings.STM32_TARGET_BLE_NAME;
+  document.getElementById("cfgOverallCapRules").value = rulesToText(settings.OVERALL_CAP_RULES);
+
+  applyChartSettings();
+  cleanupExpiredIdEvents(true);
+}
+
+function readSettingsFromUi() {
+  const newSettings = {
+    TEST_DURATION_MS: Number(document.getElementById("cfgTestDurationMs").value),
+    ID_CAPTURE_PAST_MS: Number(document.getElementById("cfgIdCapturePastMs").value),
+    ID_CAPTURE_FUTURE_MS: Number(document.getElementById("cfgIdCaptureFutureMs").value),
+    ID_EVENT_HISTORY_MS: Number(document.getElementById("cfgIdEventHistoryMs").value),
+    SLEEP_THRESHOLD_UA: Number(document.getElementById("cfgSleepThresholdUa").value),
+    BURST_THRESHOLD_UA: Number(document.getElementById("cfgBurstThresholdUa").value),
+    MIN_CURRENT_UA: Number(document.getElementById("cfgMinCurrentUa").value),
+    ENABLE_RSSI_FILTER: document.getElementById("cfgEnableRssiFilter").checked,
+    RSSI_MIN_DBM: Number(document.getElementById("cfgRssiMinDbm").value),
+    CHART_MAX_POINTS: Number(document.getElementById("cfgChartMaxPoints").value),
+    CHART_Y_MIN_UA: Number(document.getElementById("cfgChartYMinUa").value),
+    CHART_Y_MAX_UA: Number(document.getElementById("cfgChartYMaxUa").value),
+    SLEEP_WINDOW_SIZE: Number(document.getElementById("cfgSleepWindowSize").value),
+    AI_VOICE_ENABLED: document.getElementById("cfgAiVoiceEnabled").checked,
+    ELEVENLABS_API_KEY: document.getElementById("cfgElevenLabsApiKey").value.trim(),
+    ELEVENLABS_VOICE_ID: document.getElementById("cfgElevenLabsVoiceId").value.trim(),
+    ELEVENLABS_MODEL_ID: document.getElementById("cfgElevenLabsModelId").value.trim(),
+    DEEPGRAM_VOICE_ENABLED: document.getElementById("cfgDeepgramVoiceEnabled").checked,
+    DEEPGRAM_API_KEY: document.getElementById("cfgDeepgramApiKey").value.trim(),
+    DEEPGRAM_MODEL: document.getElementById("cfgDeepgramModel").value.trim(),
+    DEEPGRAM_LANGUAGE: document.getElementById("cfgDeepgramLanguage").value.trim(),
+    DEEPGRAM_ENDPOINTING_MS: Number(document.getElementById("cfgDeepgramEndpointingMs").value),
+    STM32_TARGET_BLE_NAME: document.getElementById("cfgStm32TargetBleName").value.trim(),
+    OVERALL_CAP_RULES: textToRules(document.getElementById("cfgOverallCapRules").value)
+  };
+  return sanitizeSettings(newSettings);
+}
+
+function applyChartSettings() {
+  chart.options.scales.y.min = settings.CHART_Y_MIN_UA;
+  chart.options.scales.y.max = settings.CHART_Y_MAX_UA;
+  chart.update();
+}
+
+function clearSerialOnly() {
+  document.getElementById("deviceSerial").value = '';
+}
+
+function setPowerPortStatus(text) {
+  document.getElementById("powerPortStatus").innerText = text;
+}
+
+function setIdPortStatus(text) {
+  document.getElementById("idPortStatus").innerText = text;
+}
+
+function formatEventTime(ts) {
+  if (!ts) return "-";
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");
+}
+
+function updateLastIdDisplay() {
+  cleanupExpiredIdEvents(false);
+  document.getElementById("lastSeenId").innerText = latestIdData.id || "-";
+  document.getElementById("lastSeenRssi").innerText = latestIdData.rssi !== "" ? latestIdData.rssi : "-";
+  document.getElementById("lastSeenTime").innerText = formatEventTime(latestIdData.timestamp || 0);
+}
+
+function setIdWindowStatus(text) {
+  document.getElementById("idWindowStatus").innerText = text;
+}
+
+function updateLastBarcodeLabel(text) {
+  lastBarcodeLabel = text || "";
+  document.getElementById("lastBarcodeLabel").innerText = lastBarcodeLabel || "-";
+}
+
+function setOverallCapStatus(value) {
+  document.getElementById("overallCapStatus").innerText = value === null || value === undefined ? "-" : `${value} µA`;
+}
+
+function getOverallCap(burstCount) {
+  const rules = settings.OVERALL_CAP_RULES || [];
+  for (const rule of rules) {
+    if (burstCount >= rule.burstMin) return rule.cap;
+  }
+  return rules.length ? rules[rules.length - 1].cap : 0;
+}
+
+function cleanupExpiredIdEvents(updateUi = true) {
+  const cutoff = Date.now() - settings.ID_EVENT_HISTORY_MS;
+  recentIdEvents = recentIdEvents.filter(e => e.timestamp >= cutoff);
+
+  if (!latestIdData.timestamp || latestIdData.timestamp < cutoff) {
+    latestIdData = { id: "", rssi: "", timestamp: 0, raw: "" };
+  }
+
+  if (updateUi) {
+    document.getElementById("lastSeenId").innerText = latestIdData.id || "-";
+    document.getElementById("lastSeenRssi").innerText = latestIdData.rssi !== "" ? latestIdData.rssi : "-";
+    document.getElementById("lastSeenTime").innerText = formatEventTime(latestIdData.timestamp || 0);
+  }
+}
+
+function resetUiForNewTest() {
+  document.getElementById("deviceSerial").value = "";
+
+  chart.data.labels = [];
+  chart.data.datasets[0].data = [];
+  chart.update();
+
+  document.getElementById("maxValue").innerText = 0;
+  document.getElementById("sleepAvg").innerText = 0;
+  document.getElementById("overallAvg").innerText = 0;
+  document.getElementById("burstCount").innerText = 0;
+  document.getElementById("testResult").innerText = "RUNNING";
+  document.getElementById("manualButtons").style.display = "none";
+  document.getElementById("sendFailBtn").disabled = true;
+  document.getElementById("peakMatchedId").innerText = "-";
+  document.getElementById("peakMatchedTime").innerText = "-";
+  setIdWindowStatus("Idle");
+  setOverallCapStatus("-");
+  setProgrammerStatus("Idle");
+  setProgrammerDetail("-");
+  updateLastBarcodeLabel("");
+  setNfcStatus("Idle");
+  clearBleEventLog();
+
+  lastTestData = null;
+  idCaptureWindowActive = false;
+  idCaptureWindowEnd = 0;
+  idWindowEvents = [];
+  activeTestCapturedId = "";
+  activeTestHadPeak = false;
+  activeOverallCap = 0;
+
+  latestIdData = { id: "", rssi: "", timestamp: 0, raw: "" };
+  recentIdEvents = [];
+  updateLastIdDisplay();
+}
+
+function parseIdLine(line, receivedAtMs = Date.now()) {
+  const match = line.match(/RSSI:\s*(-?\d+)\s+ID:\s*([0-9A-Fa-f]+)/i);
+  if (!match) return null;
+
+  const parsed = {
+    rssi: parseInt(match[1], 10),
+    id: match[2].toUpperCase(),
+    timestamp: receivedAtMs,
+    raw: line.trim()
+  };
+
+  if (settings.ENABLE_RSSI_FILTER && parsed.rssi < settings.RSSI_MIN_DBM) return null;
+  return parsed;
+}
+
+function rememberIdEvent(obj) {
+  latestIdData = obj;
+  recentIdEvents.push(obj);
+  cleanupExpiredIdEvents(false);
+
+  appendBleEventLog(`[SEEN ${formatEventTime(obj.timestamp)}] RSSI:${obj.rssi} ID:${obj.id}${idCaptureWindowActive ? " [IN WINDOW]" : ""}`);
+
+  if (idCaptureWindowActive) {
+    idWindowEvents.push(obj);
+  }
+
+  updateLastIdDisplay();
+}
+
+function getBestIdEvent(events) {
+  if (!events || events.length === 0) return null;
+
+  let best = events[0];
+  for (let i = 1; i < events.length; i++) {
+    const e = events[i];
+    if (e.rssi > best.rssi || (e.rssi === best.rssi && e.timestamp > best.timestamp)) {
+      best = e;
+    }
+  }
+  return best;
+}
+
+function startIdCaptureWindow() {
+  if (idCaptureWindowActive) return;
+
+  const now = Date.now();
+  const idPastWindowMs = Math.max(0, Number(settings.ID_CAPTURE_PAST_MS || 0));
+  const pastCutoff = now - idPastWindowMs;
+
+  idCaptureWindowActive = true;
+  idCaptureWindowEnd = now + Math.max(0, Number(settings.ID_CAPTURE_FUTURE_MS || 0));
+  idWindowEvents = recentIdEvents.filter(e => e.timestamp >= pastCutoff);
+
+  appendBleEventLog(`[WINDOW START ${formatEventTime(now)}] Past:${idPastWindowMs}ms Future:${Math.max(0, Number(settings.ID_CAPTURE_FUTURE_MS || 0))}ms Preloaded:${idWindowEvents.length}`);
+  setIdWindowStatus(`Capturing: -${idPastWindowMs}ms / +${Math.max(0, Number(settings.ID_CAPTURE_FUTURE_MS || 0))}ms`);
+}
+
+function finishIdCaptureWindow() {
+  if (!idCaptureWindowActive) return;
+
+  idCaptureWindowActive = false;
+  idCaptureWindowEnd = 0;
+
+  if (idWindowEvents.length > 0) {
+    const picked = getBestIdEvent(idWindowEvents);
+    activeTestCapturedId = picked.id.toLowerCase();
+    document.getElementById("deviceSerial").value = picked.id.toLowerCase();
+    document.getElementById("peakMatchedId").innerText = picked.id.toLowerCase();
+    document.getElementById("peakMatchedTime").innerText = formatEventTime(picked.timestamp);
+    const windowEndNow = Date.now();
+    appendBleEventLog(`[WINDOW END ${formatEventTime(windowEndNow)}] Candidates:${idWindowEvents.length}`);
+    for (const evt of idWindowEvents) {
+      appendBleEventLog(`  [CANDIDATE ${formatEventTime(evt.timestamp)} | AGE ${windowEndNow - evt.timestamp}ms] RSSI:${evt.rssi} ID:${evt.id}`);
+    }
+    appendBleEventLog(`[CAPTURED ${formatEventTime(picked.timestamp)}] RSSI:${picked.rssi} ID:${picked.id}`);
+    setIdWindowStatus(`Captured: ${picked.id.toLowerCase()} (RSSI ${picked.rssi}, ${formatEventTime(picked.timestamp)})`);
+  } else {
+    activeTestCapturedId = "";
+    document.getElementById("deviceSerial").value = "";
+    document.getElementById("peakMatchedId").innerText = "-";
+    document.getElementById("peakMatchedTime").innerText = "-";
+    appendBleEventLog(`[WINDOW END ${formatEventTime(Date.now())}] No BLE ID detected in capture window`);
+    setIdWindowStatus("No B L E ID detected in capture window");
+  }
+
+  idWindowEvents = [];
+}
+
+async function connectPowerPort() {
+  try {
+    powerPort = await navigator.serial.requestPort();
+    await powerPort.open({ baudRate: POWER_PORT_BAUD });
+    setPowerPortStatus(`Connected @ ${POWER_PORT_BAUD}`);
+  } catch (e) {
+    console.error(e);
+    alert("Power COM port not selected/opened.");
+  }
+}
+
+async function connectIdPort() {
+  try {
+    idPort = await navigator.serial.requestPort();
+    await idPort.open({ baudRate: ID_PORT_BAUD });
+    setIdPortStatus(`Connected @ ${ID_PORT_BAUD}`);
+    startIdReadLoop();
+  } catch (e) {
+    console.error(e);
+    alert("ID COM port not selected/opened.");
+  }
+}
+
+async function sendNameToStm32OverIdPort(name) {
+  if (!idPort || !idPort.writable) {
+    throw new Error("ID COM port is not connected.");
+  }
+
+  const trimmedName = String(name || "").trim();
+  if (!trimmedName) {
+    throw new Error("STM32 target BLE name is empty.");
+  }
+
+  const writer = idPort.writable.getWriter();
+  try {
+    const cmd = `NAME:${trimmedName}
+`;
+    await writer.write(new TextEncoder().encode(cmd));
+    console.log("Sent to STM32:", cmd.trim());
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+async function startIdReadLoop() {
+  if (!idPort || !idPort.readable || idReadLoopRunning) return;
+
+  idReadLoopRunning = true;
+  idReader = idPort.readable.getReader();
+
+  try {
+    while (true) {
+      const { value, done } = await idReader.read();
+      if (done) break;
+      if (!value) continue;
+
+      const receivedAtMs = Date.now();
+      idBuffer += new TextDecoder().decode(value);
+      const lines = idBuffer.split(/\r?\n/);
+      idBuffer = lines.pop();
+
+      for (const line of lines) {
+        const parsed = parseIdLine(line, receivedAtMs);
+        if (parsed) rememberIdEvent(parsed);
+      }
+    }
+  } catch (e) {
+    console.error("ID port read loop error:", e);
+  } finally {
+    safeReleaseReader(idReader);
+    idReader = null;
+    idReadLoopRunning = false;
+
+    if (idPort && idPort.readable) setIdPortStatus("Connected, reader stopped");
+    else setIdPortStatus("Disconnected");
+  }
+}
+
+function setVoiceStatus(text) {
+  const el = document.getElementById("voiceStatus");
+  if (el) el.innerText = "Voice commands: " + text;
+}
+
+function normalizeVoiceCommand(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeDeepgramCredential(raw) {
+  return String(raw || "")
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^Token\s+/i, "")
+    .trim();
+}
+
+function getDeepgramSocketUrl() {
+  const params = new URLSearchParams({
+    model: settings.DEEPGRAM_MODEL || "nova-3",
+    language: settings.DEEPGRAM_LANGUAGE || "en-US",
+    punctuate: "true",
+    smart_format: "true",
+    interim_results: "true",
+    endpointing: String(Math.max(0, Number(settings.DEEPGRAM_ENDPOINTING_MS || 300))),
+    vad_events: "true",
+    encoding: "opus"
+  });
+  return "wss://api.deepgram.com/v1/listen?" + params.toString();
+}
+
+function scheduleDeepgramReconnect(delayMs = 2500) {
+  if (!deepgramSessionShouldStayOn || voiceOutputActive) return;
+  if (deepgramReconnectTimer) clearTimeout(deepgramReconnectTimer);
+
+  deepgramReconnectTimer = setTimeout(async () => {
+    deepgramReconnectTimer = null;
+    if (!deepgramSessionShouldStayOn || deepgramSessionRunning || deepgramConnectInProgress) return;
     try {
-        // CREATE DEVICE
-        const deviceRes = await fetch(SERVER + "/api/device", {
-            method:"POST",
-            headers:{
-                "Content-Type":"application/json",
-                "X-Authorization":"Bearer "+jwtToken
-            },
-            body: JSON.stringify({ name: serial, type: "ISI Seal" })
-        });
-        const device = await deviceRes.json();
-        const deviceId = device.id.id;
-
-        // GET DEVICE TOKEN
-        const credRes = await fetch(SERVER + "/api/device/"+deviceId+"/credentials", {
-            headers: {"X-Authorization":"Bearer "+jwtToken}
-        });
-        const cred = await credRes.json();
-        const token = cred.credentialsId;
-
-        // SEND TELEMETRY
-        await fetch(SERVER + "/api/v1/"+token+"/telemetry", {
-            method:"POST",
-            headers: { "Content-Type":"application/json" },
-            body: JSON.stringify({
-                tester: USERNAME,
-                serial_number: serial,
-                range_type: rangeType,
-                sleep_consumption: sleep,
-                ble_peak_consumption: peak,
-                average_consumption: average,
-                pass_fail: passFail,
-                test_time: Date.now()
-            })
-        });
-
-        alert("✅ Test Result Sent Successfully");
-
-        // Add to history table
-        const tbody = document.getElementById("resultsTable").querySelector("tbody");
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${new Date().toLocaleTimeString()}</td>
-                        <td>${USERNAME}</td>
-                        <td>${serial}</td>
-                        <td>${rangeType}</td>
-                        <td>${sleep}</td>
-                        <td>${peak}</td>
-                        <td>${average}</td>
-                        <td class="${passFail=='PASS'?'pass':'fail'}">${passFail}</td>`;
-        tbody.appendChild(tr);
-
-    } catch(e){
-        alert("❌ Error sending data");
-        console.error(e);
+      await startDeepgramVoiceSession(true);
+    } catch (e) {
+      console.error("Deepgram reconnect failed:", e);
+      setVoiceStatus("Voice reconnect failed");
     }
+  }, delayMs);
+}
+
+function startDeepgramKeepAlive() {
+  stopDeepgramKeepAlive();
+  deepgramKeepAliveTimer = setInterval(() => {
+    if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+      try {
+        deepgramSocket.send(JSON.stringify({ type: "KeepAlive" }));
+      } catch (e) {
+        console.error("Deepgram KeepAlive failed:", e);
+      }
+    }
+  }, 3000);
+}
+
+function stopDeepgramKeepAlive() {
+  if (deepgramKeepAliveTimer) {
+    clearInterval(deepgramKeepAliveTimer);
+    deepgramKeepAliveTimer = null;
+  }
+}
+
+function stopDeepgramRecorder() {
+  if (deepgramMediaRecorder) {
+    try {
+      if (deepgramMediaRecorder.state !== "inactive") deepgramMediaRecorder.stop();
+    } catch (e) {}
+    deepgramMediaRecorder.ondataavailable = null;
+    deepgramMediaRecorder.onerror = null;
+    deepgramMediaRecorder.onstop = null;
+    deepgramMediaRecorder = null;
+  }
+
+  if (deepgramMediaStream) {
+    try {
+      deepgramMediaStream.getTracks().forEach(track => track.stop());
+    } catch (e) {}
+    deepgramMediaStream = null;
+  }
+}
+
+function closeDeepgramSocket() {
+  if (deepgramSocket) {
+    try {
+      if (deepgramSocket.readyState === WebSocket.OPEN) {
+        deepgramSocket.send(JSON.stringify({ type: "CloseStream" }));
+      }
+    } catch (e) {}
+    try { deepgramSocket.close(); } catch (e) {}
+    deepgramSocket = null;
+  }
+}
+
+function getSupportedRecordingMimeType() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus"
+  ];
+
+  for (const type of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return "";
+}
+
+
+
+function shouldExecuteVoiceCommand(cmd) {
+  const now = Date.now();
+  if (cmd === lastExecutedVoiceCommand && (now - lastExecutedVoiceCommandAt) < 1500) {
+    return false;
+  }
+  lastExecutedVoiceCommand = cmd;
+  lastExecutedVoiceCommandAt = now;
+  return true;
+}
+
+async function speakPromptKeepListening(text) {
+  const msg = String(text || "").trim();
+  if (!msg) return;
+  try {
+    if (settings.AI_VOICE_ENABLED && settings.ELEVENLABS_API_KEY && settings.ELEVENLABS_VOICE_ID) {
+      try {
+        await speakWithElevenLabs(msg);
+      } catch (e) {
+        console.error("ElevenLabs voice failed, falling back to browser voice:", e);
+        await speakWithBrowserVoice(msg);
+      }
+    } else {
+      await speakWithBrowserVoice(msg);
+    }
+  } catch (e) {
+    console.error("Prompt playback failed:", e);
+  }
+}
+
+async function executeVoiceCommand(rawText) {
+  const cmd = normalizeVoiceCommand(rawText);
+  if (!cmd) return false;
+  if (!shouldExecuteVoiceCommand(cmd)) return false;
+
+  console.log("Voice heard:", cmd);
+
+  if (cmd.includes("stop")) {
+    setVoiceStatus('Heard: "' + cmd + '" → STOP');
+    await stopEspTest();
+    return true;
+  }
+
+  if (cmd.includes("program") || cmd.includes("programming")) {
+    setVoiceStatus('Heard: "' + cmd + '" → PROGRAM');
+    document.getElementById("programBtn").click();
+    return true;
+  }
+
+  if (cmd.includes("connect") && cmd.includes("power")) {
+    setVoiceStatus('Heard: "' + cmd + '" → CONNECT POWER');
+    await connectPowerPort();
+    return true;
+  }
+
+  if (cmd.includes("connect") && cmd.includes("id")) {
+    setVoiceStatus('Heard: "' + cmd + '" → CONNECT ID');
+    await connectIdPort();
+    return true;
+  }
+
+  if (cmd.includes("test") || cmd.includes("start test")) {
+    setVoiceStatus('Heard: "' + cmd + '" → TEST');
+    await startTest();
+    return true;
+  }
+
+  setVoiceStatus('Unrecognized: "' + cmd + '"');
+  return false;
+}
+
+async function handleDeepgramTranscriptMessage(data) {
+  const alt = data && data.channel && data.channel.alternatives && data.channel.alternatives[0]
+    ? data.channel.alternatives[0]
+    : null;
+  const transcript = alt && alt.transcript ? String(alt.transcript).trim() : "";
+  if (!transcript) return;
+
+  deepgramLastHeardAt = Date.now();
+
+  if (data.is_final) {
+    deepgramTranscriptBuffer = (deepgramTranscriptBuffer + " " + transcript).trim();
+  } else {
+    setVoiceStatus('Hearing: "' + transcript + '"');
+  }
+
+  const readyText = data.speech_final
+    ? (deepgramTranscriptBuffer || transcript)
+    : (data.is_final ? deepgramTranscriptBuffer : "");
+
+  if (!readyText) return;
+
+  deepgramTranscriptBuffer = "";
+  await executeVoiceCommand(readyText);
+
+  if (deepgramSessionRunning && deepgramSessionShouldStayOn) {
+    setVoiceStatus("Listening");
+  }
+}
+
+async function startDeepgramVoiceSession(isReconnect = false) {
+  if (deepgramConnectInProgress || deepgramSessionRunning) return;
+
+  if (!settings.DEEPGRAM_VOICE_ENABLED) {
+    alert("Enable Deepgram Voice Commands in Configuration first.");
+    return;
+  }
+
+  const credential = normalizeDeepgramCredential(settings.DEEPGRAM_API_KEY);
+  if (!credential) {
+    alert("Add your Deepgram API key or temporary token in Configuration first.");
+    return;
+  }
+
+  if (!window.WebSocket) {
+    alert("WebSocket is not supported in this browser.");
+    return;
+  }
+
+  if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("This browser does not support microphone streaming with MediaRecorder.");
+    return;
+  }
+
+  const mimeType = getSupportedRecordingMimeType();
+  if (!mimeType) {
+    alert("No supported audio recording MIME type was found for Deepgram streaming in this browser.");
+    return;
+  }
+
+  deepgramConnectInProgress = true;
+  setVoiceStatus(isReconnect ? "Reconnecting..." : "Starting...");
+
+  try {
+    deepgramTranscriptBuffer = "";
+    deepgramMediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+
+    const socket = new WebSocket(getDeepgramSocketUrl(), ["token", credential]);
+    deepgramSocket = socket;
+
+    await new Promise((resolve, reject) => {
+      let opened = false;
+
+      socket.onopen = () => {
+        opened = true;
+        deepgramSessionRunning = true;
+        voiceRecognitionRunning = true;
+        voiceRecognitionSupported = true;
+        voiceRecognitionShouldStayOn = true;
+        voiceRecognitionBlockedByPermission = false;
+        deepgramReconnectAttempts = 0;
+        startDeepgramKeepAlive();
+        setVoiceStatus("Listening");
+        resolve();
+      };
+
+      socket.onerror = (event) => {
+        if (!opened) reject(new Error("Could not open Deepgram WebSocket."));
+        console.error("Deepgram socket error:", event);
+      };
+
+      socket.onmessage = async (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === "Results") {
+            await handleDeepgramTranscriptMessage(data);
+            return;
+          }
+          if (data && data.type === "UtteranceEnd") {
+            const pending = deepgramTranscriptBuffer.trim();
+            if (pending) {
+              deepgramTranscriptBuffer = "";
+              await executeVoiceCommand(pending);
+              if (deepgramSessionRunning && deepgramSessionShouldStayOn) {
+                setVoiceStatus("Listening");
+              }
+            }
+            return;
+          }
+          if (data && data.type === "Metadata") return;
+          if (data && data.type === "Warning") {
+            console.warn("Deepgram warning:", data);
+            return;
+          }
+          if (data && data.type === "Error") {
+            console.error("Deepgram error message:", data);
+            setVoiceStatus("Voice error");
+          }
+        } catch (e) {
+          console.error("Deepgram message parse error:", e);
+        }
+      };
+
+      socket.onclose = () => {
+        stopDeepgramKeepAlive();
+        deepgramSessionRunning = false;
+        voiceRecognitionRunning = false;
+        deepgramConnectInProgress = false;
+        stopDeepgramRecorder();
+        if (deepgramSocket === socket) deepgramSocket = null;
+
+        if (deepgramSessionShouldStayOn) {
+          deepgramReconnectAttempts += 1;
+          setVoiceStatus("Reconnecting...");
+          scheduleDeepgramReconnect(Math.min(7000, 2000 + (deepgramReconnectAttempts * 1000)));
+        } else {
+          setVoiceStatus("Stopped");
+        }
+      };
+    });
+
+    deepgramMediaRecorder = new MediaRecorder(deepgramMediaStream, mimeType ? { mimeType } : undefined);
+    deepgramMediaRecorder.ondataavailable = async (event) => {
+      try {
+        if (!event.data || !event.data.size) return;
+        if (!deepgramSocket || deepgramSocket.readyState !== WebSocket.OPEN) return;
+        const buffer = await event.data.arrayBuffer();
+        deepgramSocket.send(buffer);
+      } catch (e) {
+        console.error("Deepgram audio send failed:", e);
+      }
+    };
+    deepgramMediaRecorder.onerror = (event) => {
+      console.error("MediaRecorder error:", event);
+      setVoiceStatus("Voice recorder error");
+    };
+    deepgramMediaRecorder.start(250);
+  } catch (e) {
+    stopDeepgramKeepAlive();
+    stopDeepgramRecorder();
+    closeDeepgramSocket();
+    deepgramSessionRunning = false;
+    voiceRecognitionRunning = false;
+    setVoiceStatus("Start failed");
+    throw e;
+  } finally {
+    deepgramConnectInProgress = false;
+  }
+}
+
+function startVoiceCommands() {
+  deepgramSessionShouldStayOn = true;
+  voiceRecognitionShouldStayOn = true;
+  voiceRecognitionBlockedByPermission = false;
+  
+  if (deepgramSessionRunning || deepgramConnectInProgress) {
+    setVoiceStatus("Listening");
+    return;
+  }
+
+  startDeepgramVoiceSession(false).catch((e) => {
+    console.error("Deepgram start failed:", e);
+    const msg = e && e.message ? e.message : String(e || "Unknown error");
+    if (msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")) {
+      setVoiceStatus("Microphone permission denied");
+    } else {
+      setVoiceStatus("Start failed");
+    }
+  });
+}
+
+function stopVoiceCommands() {
+  deepgramSessionShouldStayOn = false;
+  voiceRecognitionShouldStayOn = false;
+  voiceRecognitionRunning = false;
+  voiceRecognitionBlockedByPermission = false;
+    voiceOutputActive = false;
+  deepgramTranscriptBuffer = "";
+
+  if (voiceOutputResumeTimer) {
+    clearTimeout(voiceOutputResumeTimer);
+    voiceOutputResumeTimer = null;
+  }
+
+  if (deepgramReconnectTimer) {
+    clearTimeout(deepgramReconnectTimer);
+    deepgramReconnectTimer = null;
+  }
+
+    stopDeepgramKeepAlive();
+  stopDeepgramRecorder();
+  closeDeepgramSocket();
+  deepgramSessionRunning = false;
+  setVoiceStatus("Stopped");
+}
+
+const ctx = document.getElementById('adcChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Current (µA)',
+      data: [],
+      borderColor: 'red',
+      backgroundColor: 'rgba(255,0,0,0.2)',
+      fill: true
+    }]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    scales: {
+      y: {
+        type: 'logarithmic',
+        min: settings.CHART_Y_MIN_UA,
+        max: settings.CHART_Y_MAX_UA,
+        ticks: {
+          callback: value => value + ' µA'
+        }
+      }
+    }
+  }
 });
+
+document.getElementById("loginBtn").onclick = async () => {
+  const password = document.getElementById("password").value;
+  document.getElementById("loginStatus").innerText = "Logging in...";
+
+  try {
+    const res = await fetch(SERVER + "/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: USERNAME, password })
+    });
+
+    if (!res.ok) {
+      document.getElementById("loginStatus").innerText = "❌ Failed";
+      return;
+    }
+
+    jwtToken = (await res.json()).token;
+    document.getElementById("loginStatus").innerText = "✅ Logged in";
+    document.getElementById("loginCard").style.display = "none";
+  } catch (e) {
+    document.getElementById("loginStatus").innerText = "❌ Error";
+    console.error(e);
+  }
+};
+
+
+function setNfcStatus(text) {
+  const el = document.getElementById("nfcStatus");
+  if (el) el.innerText = text || "Idle";
+}
+
+let phonePeer = null;
+let phoneConn = null;
+let phonePcId = "";
+let phoneQr = null;
+let pendingPhoneRequests = new Map();
+
+function makeShortPcCode() {
+  const saved = localStorage.getItem("blePhonePcCode");
+  if (saved && /^[A-Z0-9]{6}$/.test(saved)) return saved;
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  localStorage.setItem("blePhonePcCode", out);
+  return out;
+}
+
+function setPhoneLinkStatus(text, linked = false) {
+  const el = document.getElementById("phoneLinkStatus");
+  const inline = document.getElementById("phoneLinkInlineStatus");
+  if (el) el.innerText = text;
+  if (inline) inline.innerText = linked ? "Linked" : text;
+}
+
+function hidePhoneLinkCard() {
+  const card = document.getElementById("phoneLinkCard");
+  const btn = document.getElementById("phoneLinkToggleBtn");
+  if (card) card.classList.add("hiddenCard");
+  if (btn) btn.style.display = "inline-block";
+  localStorage.setItem("blePhoneLinkHidden", "1");
+}
+
+function showPhoneLinkCard() {
+  const card = document.getElementById("phoneLinkCard");
+  const btn = document.getElementById("phoneLinkToggleBtn");
+  if (card) card.classList.remove("hiddenCard");
+  if (btn) btn.style.display = "none";
+  localStorage.removeItem("blePhoneLinkHidden");
+}
+
+function renderPhoneQr(text) {
+  const box = document.getElementById("phoneLinkQr");
+  if (!box) return;
+  box.innerHTML = "";
+  if (typeof QRCode === "undefined") {
+    box.textContent = "QR unavailable";
+    return;
+  }
+  phoneQr = new QRCode(box, {
+    text,
+    width: 120,
+    height: 120,
+    correctLevel: QRCode.CorrectLevel.L
+  });
+}
+
+function resetPendingPhoneRequests(errText) {
+  const msg = errText || "Phone disconnected";
+  for (const [id, entry] of pendingPhoneRequests.entries()) {
+    clearTimeout(entry.timer);
+    entry.reject(new Error(msg));
+  }
+  pendingPhoneRequests.clear();
+}
+
+function initPhoneLink() {
+  if (typeof Peer === "undefined") {
+    setPhoneLinkStatus("Peer library failed");
+    return;
+  }
+
+  phonePcId = "blepc-" + makeShortPcCode();
+  document.getElementById("phoneLinkCode").innerText = makeShortPcCode();
+  renderPhoneQr("BLEPC:" + phonePcId);
+
+  setPhoneLinkStatus("Waiting for phone scan...");
+  phonePeer = new Peer(phonePcId);
+
+  phonePeer.on("open", () => {
+    setPhoneLinkStatus("Waiting for phone scan...");
+  });
+
+  phonePeer.on("connection", (conn) => {
+    if (phoneConn) {
+      try { phoneConn.close(); } catch (e) {}
+    }
+    phoneConn = conn;
+    wirePhoneConnection(conn);
+  });
+
+  phonePeer.on("error", (err) => {
+    console.error("Peer error:", err);
+    setPhoneLinkStatus("Link error");
+  });
+
+  if (localStorage.getItem("blePhoneLinkHidden") === "1") {
+    hidePhoneLinkCard();
+  }
+}
+
+function refreshPhoneLink() {
+  try { if (phoneConn) phoneConn.close(); } catch (e) {}
+  try { if (phonePeer) phonePeer.destroy(); } catch (e) {}
+  phoneConn = null;
+  phonePeer = null;
+  resetPendingPhoneRequests("Phone link reset");
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  localStorage.setItem("blePhonePcCode", out);
+  showPhoneLinkCard();
+  initPhoneLink();
+}
+
+function wirePhoneConnection(conn) {
+  conn.on("open", () => {
+    setPhoneLinkStatus("Phone linked", true);
+    hidePhoneLinkCard();
+    conn.send({ type: "hello_from_pc", pcId: phonePcId });
+  });
+
+  conn.on("data", (data) => {
+    if (!data || typeof data !== "object") return;
+    if (data.type === "barcode_result" || data.type === "nfc_result") {
+      const entry = pendingPhoneRequests.get(data.requestId);
+      if (!entry) return;
+      clearTimeout(entry.timer);
+      pendingPhoneRequests.delete(data.requestId);
+      if (data.ok === false) entry.reject(new Error(data.error || "Phone request failed"));
+      else entry.resolve(data);
+      return;
+    }
+    if (data.type === "phone_status") {
+      setPhoneLinkStatus(data.text || "Phone linked", true);
+      return;
+    }
+  });
+
+  conn.on("close", () => {
+    phoneConn = null;
+    resetPendingPhoneRequests("Phone disconnected");
+    setPhoneLinkStatus("Disconnected");
+    showPhoneLinkCard();
+  });
+
+  conn.on("error", (err) => {
+    console.error("Phone connection error:", err);
+  });
+}
+
+function sendPhoneRequest(type, payload = {}, timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    if (!phoneConn || !phoneConn.open) {
+      reject(new Error("Phone is not linked."));
+      return;
+    }
+    const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+    const timer = setTimeout(() => {
+      pendingPhoneRequests.delete(requestId);
+      reject(new Error("Phone request timed out."));
+    }, timeoutMs);
+    pendingPhoneRequests.set(requestId, { resolve, reject, timer });
+    phoneConn.send(Object.assign({ type, requestId }, payload));
+  });
+}
+
+async function getBarcodeForTest() {
+  return askForPcBarcode();
+}
+
+async function requestPhoneNfcWrite(serial) {
+  if (!(phoneConn && phoneConn.open)) {
+    setNfcStatus("Phone not linked");
+    return { ok: false, skipped: true };
+  }
+  setNfcStatus("Waiting for phone...");
+  const res = await sendPhoneRequest("request_nfc", { serial }, 180000);
+  setNfcStatus(res && res.message ? res.message : "Written");
+  return res;
+}
+
+
+function askForPcBarcode() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("barcodeModal");
+    const input = document.getElementById("barcodeInput");
+    const saveBtn = document.getElementById("barcodeSaveBtn");
+    const cancelBtn = document.getElementById("barcodeCancelBtn");
+    const status = document.getElementById("barcodeStatus");
+    const phoneLinked = !!(phoneConn && phoneConn.open);
+    let active = true;
+
+    modal.style.display = "block";
+    input.value = "";
+    status.innerText = phoneLinked
+      ? "Scan with PC scanner, enter manually, or scan on phone."
+      : "Waiting for barcode scan...";
+    setTimeout(() => input.focus(), 100);
+
+    function cleanup() {
+      active = false;
+      saveBtn.onclick = null;
+      cancelBtn.onclick = null;
+      input.onkeydown = null;
+      modal.style.display = "none";
+    }
+
+    saveBtn.onclick = () => {
+      const barcode = input.value.trim();
+      if (!barcode) {
+        status.innerText = "Please scan or enter a barcode.";
+        input.focus();
+        return;
+      }
+      cleanup();
+      resolve(barcode);
+    };
+
+    cancelBtn.onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    };
+
+    if (phoneLinked) {
+      setProgrammerStatus("Waiting for barcode...");
+      sendPhoneRequest("request_barcode", {}, 180000)
+        .then((res) => {
+          if (!active) return;
+          const barcode = String((res && res.barcode) || "").trim();
+          if (!barcode) return;
+          input.value = barcode;
+          status.innerText = "Barcode received from phone.";
+          updateLastBarcodeLabel(barcode);
+          setTimeout(() => {
+            if (active) saveBtn.click();
+          }, 150);
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.error("Phone barcode request failed:", err);
+          status.innerText = "Phone barcode failed. Use scanner or type manually.";
+        });
+    }
+  });
+}
+
+async function startTest() {
+  if (!jwtToken) {
+    alert("Login first");
+    return;
+  }
+
+  resetUiForNewTest();
+  testStopRequested = false;
+
+  if (!powerPort) await connectPowerPort();
+  if (!powerPort || !powerPort.readable || !powerPort.writable) {
+    alert("Connect the Power COM port first.");
+    return;
+  }
+
+  if (!idPort) {
+    const proceed = confirm("ID COM port is not connected. Continue without auto ID?");
+    if (!proceed) return;
+  } else if (!idReadLoopRunning) {
+    startIdReadLoop();
+  }
+
+  if (powerReader) {
+    safeReleaseReader(powerReader);
+    powerReader = null;
+  }
+
+  setProgrammerStatus("Starting test...");
+  await sendCommandToPowerPort("TEST");
+
+  powerReader = powerPort.readable.getReader();
+
+  let maxBurst = 0;
+  let totalSum = 0;
+  let totalCount = 0;
+  let burstCount = 0;
+  let wasAboveBurstThreshold = false;
+  const sleepWindow = [];
+
+  try {
+    let buffer = '';
+    const start = Date.now();
+
+    while (true) {
+      cleanupExpiredIdEvents(true);
+
+      const { value, done } = await powerReader.read();
+      if (done) break;
+
+      if (value) {
+        buffer += new TextDecoder().decode(value);
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop();
+
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          if (/^TEST_START$/i.test(trimmed)) {
+            setProgrammerStatus("Testing");
+            return;
+          }
+          if (/^TEST_STOP$/i.test(trimmed)) {
+            setProgrammerStatus("Stopped");
+            return;
+          }
+          if (/^PROGRAM_/i.test(trimmed) || /^PLEASE_PRESS_TEST$/i.test(trimmed) || /^PONG$/i.test(trimmed)) {
+            return;
+          }
+
+          const match = trimmed.match(/Current:\s*([\d.]+)/i);
+          if (!match) return;
+
+          const current = Math.max(parseFloat(match[1]) * 1000, settings.MIN_CURRENT_UA);
+
+          chart.data.labels.push('');
+          chart.data.datasets[0].data.push(current);
+
+          if (chart.data.labels.length > settings.CHART_MAX_POINTS) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+          }
+
+          chart.update();
+
+          if (current > maxBurst) maxBurst = current;
+
+          if (current >= settings.BURST_THRESHOLD_UA) {
+            if (!wasAboveBurstThreshold) {
+              const peakTs = Date.now();
+              burstCount++;
+              activeTestHadPeak = true;
+              appendBleEventLog(`[PEAK ${formatEventTime(peakTs)}] Current:${Math.round(current)}uA Threshold:${Math.round(settings.BURST_THRESHOLD_UA)}uA BurstCount:${burstCount}`);
+              if (!idCaptureWindowActive && !activeTestCapturedId) startIdCaptureWindow();
+            }
+            wasAboveBurstThreshold = true;
+          } else {
+            wasAboveBurstThreshold = false;
+          }
+
+          document.getElementById("burstCount").innerText = burstCount;
+
+          if (current <= settings.SLEEP_THRESHOLD_UA) {
+            sleepWindow.push(current);
+            if (sleepWindow.length > settings.SLEEP_WINDOW_SIZE) sleepWindow.shift();
+
+            const sleepAvgLive = sleepWindow.reduce((a, b) => a + b, 0) / sleepWindow.length;
+            document.getElementById("sleepAvg").innerText = Math.round(sleepAvgLive);
+          }
+
+          totalSum += current;
+          totalCount++;
+
+          const overallLive = totalSum / totalCount;
+          document.getElementById("overallAvg").innerText = Math.round(overallLive);
+          document.getElementById("maxValue").innerText = Math.round(maxBurst);
+
+          activeOverallCap = getOverallCap(burstCount);
+          setOverallCapStatus(activeOverallCap);
+        });
+      }
+
+      if (idCaptureWindowActive && Date.now() >= idCaptureWindowEnd) {
+        finishIdCaptureWindow();
+      }
+
+      if (testStopRequested) {
+        document.getElementById("testResult").innerText = "STOPPED";
+        break;
+      }
+
+      if (Date.now() - start >= settings.TEST_DURATION_MS) {
+        if (idCaptureWindowActive) finishIdCaptureWindow();
+
+        const sleepAvg = sleepWindow.length ? sleepWindow.reduce((a, b) => a + b, 0) / sleepWindow.length : 0;
+        const overallAvg = totalCount ? totalSum / totalCount : 0;
+        const overallCap = getOverallCap(burstCount);
+        setOverallCapStatus(overallCap);
+
+        let serial = document.getElementById("deviceSerial").value.trim().toLowerCase();
+
+        const passSleep = sleepAvg < settings.SLEEP_THRESHOLD_UA;
+        const passBurst = maxBurst > settings.BURST_THRESHOLD_UA;
+        const passOverall = overallAvg <= overallCap;
+        const passId = !!serial;
+
+        let reasons = [];
+        if (!passId) reasons.push("No B L E ID detected in capture window");
+        if (!passSleep) reasons.push(`Sleep Avg > ${settings.SLEEP_THRESHOLD_UA} µA`);
+        if (!passBurst) reasons.push(`Burst < ${settings.BURST_THRESHOLD_UA} µA`);
+        if (!passOverall) reasons.push(`Overall Avg > ${overallCap} µA`);
+
+        const finalResult = (passId && passSleep && passBurst && passOverall) ? "PASS" : "FAIL";
+        document.getElementById("testResult").innerText =
+          finalResult + (reasons.length ? " [" + reasons.join(", ") + "]" : "");
+        speakTestResult(finalResult, reasons.join(";"));
+
+        lastTestData = {
+          serial,
+          sleepAvg,
+          burstCount,
+          maxBurst,
+          overallAvg,
+          overallCap,
+          finalResult,
+          reasons: reasons.join(";")
+        };
+
+        if (finalResult === "FAIL") {
+          document.getElementById("manualButtons").style.display = "block";
+          document.getElementById("sendFailBtn").disabled = !serial;
+        } else {
+          const barcodeLabel = await getBarcodeForTest();
+
+          if (!barcodeLabel) {
+            alert("Barcode scan cancelled. PASS result not sent.");
+            break;
+          }
+
+          updateLastBarcodeLabel(barcodeLabel);
+
+          try {
+            await sendToThingsBoard(
+              serial,
+              barcodeLabel,
+              sleepAvg,
+              burstCount,
+              maxBurst,
+              overallAvg,
+              finalResult,
+              reasons.join(";")
+            );
+
+            addHistory(serial, barcodeLabel, sleepAvg, burstCount, maxBurst, overallAvg, finalResult);
+            clearSerialOnly();
+
+            try {
+              await requestPhoneNfcWrite(serial);
+            } catch (nfcErr) {
+              console.error("Phone NFC failed:", nfcErr);
+              setNfcStatus("Failed");
+              alert("ThingsBoard send worked, but phone NFC failed: " + (nfcErr.message || nfcErr));
+            }
+          } catch (e) {
+            console.error(e);
+            alert("❌ Send to ThingsBoard failed. Test history not saved.");
+          }
+        }
+
+        break;
+      }
+    }
+
+    try { await sendCommandToPowerPort("STOP"); } catch (e) { console.error(e); }
+    if (powerReader) {
+      safeReleaseReader(powerReader);
+      powerReader = null;
+    }
+    setProgrammerStatus("Stopped");
+  } catch (e) {
+    console.error(e);
+    alert("Error: " + e);
+    if (powerReader) {
+      safeReleaseReader(powerReader);
+      powerReader = null;
+    }
+  }
+}
+
+async function sendToThingsBoard(serial, barcodeLabel, sleepAvg, burstCount, peak, avg, result, reason) {
+  serial = (serial || "").trim().toLowerCase();
+  const deviceBody = { name: serial, type: "BLE Device" };
+  if (barcodeLabel) deviceBody.label = barcodeLabel;
+
+  const deviceRes = await fetch(SERVER + "/api/device", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Authorization": "Bearer " + jwtToken
+    },
+    body: JSON.stringify(deviceBody)
+  });
+
+  if (!deviceRes.ok) throw new Error("Device creation failed");
+
+  const device = await deviceRes.json();
+  const deviceId = device.id.id;
+
+  const credRes = await fetch(SERVER + "/api/device/" + deviceId + "/credentials", {
+    headers: { "X-Authorization": "Bearer " + jwtToken }
+  });
+
+  if (!credRes.ok) throw new Error("Get credentials failed");
+
+  const cred = await credRes.json();
+
+  const telemetryRes = await fetch(SERVER + "/api/v1/" + cred.credentialsId + "/telemetry", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      serial_number: serial,
+      board_barcode: barcodeLabel || "",
+      sleep_avg: sleepAvg,
+      burst_count: burstCount,
+      ble_peak: peak,
+      overall_avg: avg,
+      pass_fail: result,
+      failure_reason: reason,
+      test_time: Date.now()
+    })
+  });
+
+  if (!telemetryRes.ok) throw new Error("Send telemetry failed");
+}
+
+function addHistory(serial, barcodeLabel, sleepAvg, burstCount, peak, avg, result) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${new Date().toLocaleTimeString()}</td>
+    <td>${serial}</td>
+    <td>${barcodeLabel || "-"}</td>
+    <td>${sleepAvg.toFixed(1)}</td>
+    <td>${burstCount}</td>
+    <td>${avg.toFixed(1)}</td>
+    <td class="${result === 'PASS' ? 'pass' : 'fail'}">${result}</td>
+  `;
+  document.getElementById("history").appendChild(tr);
+}
+
+// ---------- Configuration ----------
+function openConfigPasswordModal() {
+  document.getElementById("configPasswordInput").value = "";
+  document.getElementById("configStatus").innerText = "";
+  document.getElementById("configPasswordModal").style.display = "block";
+  setTimeout(() => document.getElementById("configPasswordInput").focus(), 50);
+}
+
+function closeConfigPasswordModal() {
+  document.getElementById("configPasswordModal").style.display = "none";
+}
+
+function openConfigModal() {
+  applySettingsToUi();
+  document.getElementById("configSaveStatus").innerText = "";
+  document.getElementById("configModal").style.display = "block";
+}
+
+function closeConfigModal() {
+  document.getElementById("configModal").style.display = "none";
+}
+
+document.getElementById("openConfigBtn").onclick = openConfigPasswordModal;
+document.getElementById("openConfigBtn2").onclick = openConfigPasswordModal;
+
+document.getElementById("configPasswordOkBtn").onclick = () => {
+  const pwd = document.getElementById("configPasswordInput").value;
+  if (pwd !== CONFIG_PASSWORD) {
+    document.getElementById("configStatus").innerText = "Wrong password.";
+    return;
+  }
+  closeConfigPasswordModal();
+  openConfigModal();
+};
+
+document.getElementById("configPasswordCancelBtn").onclick = closeConfigPasswordModal;
+document.getElementById("configPasswordInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("configPasswordOkBtn").click();
+});
+
+document.getElementById("configCloseBtn").onclick = closeConfigModal;
+
+document.getElementById("configResetBtn").onclick = () => {
+  settings = cloneDefaults();
+  applySettingsToUi();
+  document.getElementById("configSaveStatus").innerText = "Defaults loaded. Click Save Settings to keep them.";
+};
+
+document.getElementById("configSaveBtn").onclick = async () => {
+  try {
+    settings = readSettingsFromUi();
+    saveSettings();
+    applySettingsToUi();
+    await sendNameToStm32OverIdPort(settings.STM32_TARGET_BLE_NAME);
+    document.getElementById("configSaveStatus").innerText = "Settings saved and BLE name sent to STM32.";
+    closeConfigModal(); // save must close the window
+  } catch (e) {
+    console.error(e);
+    document.getElementById("configSaveStatus").innerText = "Save failed: " + e.message;
+  }
+};
+
+// ---------- Buttons ----------
+document.getElementById("connectPowerPortBtn").onclick = connectPowerPort;
+document.getElementById("connectIdPortBtn").onclick = connectIdPort;
+document.getElementById("programBtn").onclick = async () => {
+  try {
+    await runProgramSequence();
+  } catch (e) {
+    console.error(e);
+    const msg = String(e && e.message ? e.message : e || "");
+    if (!msg.includes("Releasing Default reader") &&
+        !msg.includes("BreakError: Break received")) {
+      alert("Programming failed: " + msg);
+    }
+  } finally {
+    if (!isProgramming && deepgramSessionShouldStayOn && deepgramSessionRunning) {
+      setVoiceStatus("Listening");
+    }
+  }
+};
+document.getElementById("loadFirmwareBtn").onclick = async () => {
+  try {
+    await chooseFirmwareFileOnly();
+  } catch (e) {
+    console.error(e);
+    alert("Firmware load failed: " + (e.message || e));
+  }
+};
+document.getElementById("connect").onclick = startTest;
+document.getElementById("stopEspBtn").onclick = stopEspTest;
+document.getElementById("voiceCmdBtn").onclick = startVoiceCommands;
+document.getElementById("retryBtn").onclick = () => { startTest(); };
+
+window.addEventListener("DOMContentLoaded", () => {
+  const downloadBtn = document.getElementById("downloadBleLogBtn");
+  const clearBtn = document.getElementById("clearBleLogBtn");
+  if (downloadBtn) downloadBtn.onclick = downloadBleEventLog;
+  if (clearBtn) clearBtn.onclick = clearBleEventLog;
+});
+
+window.addEventListener("load", () => { startVoiceCommands(); });
+
+document.getElementById("sendFailBtn").onclick = async () => {
+  if (lastTestData) {
+    const d = lastTestData;
+    if (!d.serial) {
+      alert("Cannot send failure without a valid BLE ID / serial.");
+      return;
+    }
+    try {
+      await sendToThingsBoard(
+        d.serial,
+        "",
+        d.sleepAvg,
+        d.burstCount,
+        d.maxBurst,
+        d.overallAvg,
+        d.finalResult,
+        d.reasons
+      );
+      addHistory(d.serial, "", d.sleepAvg, d.burstCount, d.maxBurst, d.overallAvg, d.finalResult);
+      clearSerialOnly();
+      document.getElementById("manualButtons").style.display = "none";
+    } catch (e) {
+      console.error(e);
+      alert("❌ Send to ThingsBoard failed. Test history not saved.");
+    }
+  }
+};
+
+document.getElementById("phoneLinkToggleBtn").onclick = showPhoneLinkCard;
+document.getElementById("hidePhoneLinkBtn").onclick = hidePhoneLinkCard;
+document.getElementById("refreshPhoneLinkBtn").onclick = refreshPhoneLink;
+
+// Initial apply
+applySettingsToUi();
+initPhoneLink();
+setProgrammerStatus("Idle");
+setProgrammerDetail("-");
+clearProgrammingLog();
+setInterval(() => cleanupExpiredIdEvents(true), 250);
+
+// Voice is always kept on for the demo. Spoken feedback does not disable command listening.
+
+document.getElementById("voiceCmdBtn").onclick = startVoiceCommands;
 </script>
 
 </body>
